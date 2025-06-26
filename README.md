@@ -3,6 +3,7 @@
 **Model Context Protocol for x64dbg**
 
 A MCP server that can bridge various LLMS with the x64dbg debugger, providing direct access to debugging functionality through natural language.
+(Considering this project complete unless someone has any ideas on intergrating a universal unpacker, keeping kernel protected(Anti-Cheat) process alive for dynamic analysis from User Mode on Windows 11, or cleaning up existing functions for better performance)
 
 ## Features
 
