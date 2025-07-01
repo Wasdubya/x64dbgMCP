@@ -418,9 +418,7 @@ def PatternFindMem(start: str, size: str, pattern: str) -> str:
     Returns:
         Found address in hex format or error message
     """
-    # Remove spaces from pattern
-    pattern_clean = pattern.replace(' ', '')
-    return safe_get("Pattern/FindMem", {"start": start, "size": size, "pattern": pattern_clean})
+    return safe_get("Pattern/FindMem", {"start": start, "size": size, "pattern": pattern})
 
 # =============================================================================
 # MISC API
