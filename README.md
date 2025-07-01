@@ -64,19 +64,18 @@ Additional functions for backward compatibility with older integrations.
    - Copy x64dbgmcp.py from this repos src directory
    - Update local claude_desktop_config.json with path to x64dbgmcp.py
 
-            ```json
-   {
+```json
+{
   "mcpServers": {
     "x64dbg": {
-      "command": "Path\To\Python",
+      "command": "Path\\To\\Python",
       "args": [
-        "Path\to\x64dbg.py"
+        "Path\\to\\x64dbg.py"
       ]
     }
   }
-         }
-   ```
-
+}
+```
       
 4. **Start Debugging**
    - Launch x64dbg
