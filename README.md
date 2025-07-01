@@ -64,7 +64,8 @@ Additional functions for backward compatibility with older integrations.
    # Copy x64dbgmcp.py from this repos src directory
    # Update local claude_desktop_config.json with path to x64dbgmcp.py
 
-            ```{
+            ```
+   {
   "mcpServers": {
     "x64dbg": {
       "command": "Path\To\Python",
@@ -73,10 +74,11 @@ Additional functions for backward compatibility with older integrations.
       ]
     }
   }
-         }```
+         }
+   ```
 
       
-3. **Start Debugging**
+4. **Start Debugging**
    - Launch x64dbg
    - Start Claude Desktop
    - Check plugin loaded successfully (ALT+L in x64dbg for logs)
