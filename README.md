@@ -57,12 +57,12 @@ Additional functions for backward compatibility with older integrations.
 ### Quick Setup
 
 1. **Download Plugin**
-   # Grab .dp64 or .dp32 from this repo's build/release directory
-   # Copy to your local: [x64dbg_dir]/release/x64/plugins/
+   - Grab .dp64 or .dp32 from this repo's build/release directory
+   - Copy to your local: [x64dbg_dir]/release/x64/plugins/
 
 2. **Configure Claude Desktop**
-   # Copy x64dbgmcp.py from this repos src directory
-   # Update local claude_desktop_config.json with path to x64dbgmcp.py
+   - Copy x64dbgmcp.py from this repos src directory
+   - Update local claude_desktop_config.json with path to x64dbgmcp.py
 
             ```json
    {
