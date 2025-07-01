@@ -51,8 +51,6 @@ A comprehensive MCP server that can bridge various LLMS with the x64dbg debugger
 - `MiscRemoteGetProcAddress` - Get API addresses
 - `GetModuleList` - List loaded modules
 
-### Legacy Compatibility
-Additional functions for backward compatibility with older integrations.
 
 ### Quick Setup
 
