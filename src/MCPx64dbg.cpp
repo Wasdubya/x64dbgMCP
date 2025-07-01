@@ -1062,12 +1062,19 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     
                     duint start = 0, size = 0;
                     try {
+                        // Parse start address
                         if (startStr.substr(0, 2) == "0x") {
                             start = std::stoull(startStr.substr(2), nullptr, 16);
                         } else {
                             start = std::stoull(startStr, nullptr, 16);
                         }
-                        size = std::stoull(sizeStr, nullptr, 10);
+                        
+                        // Parse size - handle both hex and decimal
+                        if (sizeStr.substr(0, 2) == "0x") {
+                            size = std::stoull(sizeStr.substr(2), nullptr, 16);
+                        } else {
+                            size = std::stoull(sizeStr, nullptr, 10);
+                        }
                     } catch (const std::exception& e) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid start or size format");
                         continue;
