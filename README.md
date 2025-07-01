@@ -89,7 +89,7 @@ cmake .. -DBUILD_X64=ON     # Use -DBUILD_X64=OFF for x86
 cmake --build . --config Release
 
 
-## 🎯 Usage Examples
+## Usage Examples
 
 **Set a breakpoint and analyze:**
 ```
@@ -118,7 +118,7 @@ cmake --build . --config Release
 - The AI can step through code much faster than manual debugging for analysis tasks
 
 
-## 🤝 Contributing
+## Contributing
 
 This is my first repository - feedback, improvements, and additional functionality are welcome!
 
@@ -127,6 +127,7 @@ This is my first repository - feedback, improvements, and additional functionali
 - Better error handling for failed commands
 - Enhanced command validation
 
-## 📺 Demo
+## ≡ƒô║ Demo
 ![Demo of Plug](Showcase.gif)
+
 
