@@ -111,21 +111,6 @@ cmake --build . --config Release
 "Find the pattern '48 8B 05' in the current module"
 ```
 
-## Additional Notes
-
-- Claude is actaully very good at stepping through programs, identifying API's, and just building overrall awareness of a given    binary
-- Some automatic command generation may not work perfectly with DbgCmdExec.
-- The AI can step through code much faster than manual debugging for analysis tasks
-
-
-## Contributing
-
-This is my first repository - feedback, improvements, and additional functionality are welcome!
-
-**Areas for improvement:**
-- Function cleanup (some utilities like `IsDebugActive` & 'DbgCmdExec' could be optimized)
-- Better error handling for failed commands
-- Enhanced command validation
 
 ## Demo
 ![Demo of Plug](Showcase.gif)
