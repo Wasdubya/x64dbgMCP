@@ -64,7 +64,7 @@ Additional functions for backward compatibility with older integrations.
    # Copy x64dbgmcp.py from this repos src directory
    # Update local claude_desktop_config.json with path to x64dbgmcp.py
 
-            ```
+            ```json
    {
   "mcpServers": {
     "x64dbg": {
