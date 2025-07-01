@@ -130,7 +130,7 @@ This is my first repository - feedback, improvements, and additional functionali
 - Better error handling for failed commands
 - Enhanced command validation
 
-## ≡ƒô║ Demo
+## Demo
 ![Demo of Plug](Showcase.gif)
 
 
