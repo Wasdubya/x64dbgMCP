@@ -415,14 +415,19 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", response);
                 }
                 else if (path == "/IsDebugActive") {
-                    bool active = DbgIsRunning();
-                    sendHttpResponse(clientSocket, 200, "text/plain", active ? "true" : "false");
+                    bool isRunning = DbgIsRunning();
+                    _plugin_logprintf("DbgIsRunning() called, result: %s\n", isRunning ? "true" : "false");
+                    std::stringstream ss;
+                    ss << "{\"isRunning\":" << (isRunning ? "true" : "false") << "}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
                 else if (path == "/Is_Debugging") {
                     bool isDebugging = DbgIsDebugging();
-                    sendHttpResponse(clientSocket, 200, "text/plain", isDebugging ? "true" : "false");
+                    _plugin_logprintf("DbgIsDebugging() called, result: %s\n", isDebugging ? "true" : "false");
+                    std::stringstream ss;
+                    ss << "{\"isDebugging\":" << (isDebugging ? "true" : "false") << "}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                
                 // =============================================================================
                 // REGISTER API ENDPOINTS
                 // =============================================================================

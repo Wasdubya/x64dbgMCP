@@ -83,28 +83,41 @@ def ExecCommand(cmd: str) -> str:
 def IsDebugActive() -> bool:
     """
     Check if debugger is active (running)
-    
+
     Returns:
         True if running, False otherwise
     """
     result = safe_get("IsDebugActive")
+    if isinstance(result, dict) and "isRunning" in result:
+        return result["isRunning"] is True
     if isinstance(result, str):
-        return result.lower() == "true"
+        try:
+            import json
+            parsed = json.loads(result)
+            return parsed.get("isRunning", False) is True
+        except Exception:
+            return False
     return False
 
 @mcp.tool()
 def IsDebugging() -> bool:
     """
     Check if x64dbg is debugging a process
-    
+
     Returns:
         True if debugging, False otherwise
     """
     result = safe_get("Is_Debugging")
+    if isinstance(result, dict) and "isDebugging" in result:
+        return result["isDebugging"] is True
     if isinstance(result, str):
-        return result.lower() == "true"
+        try:
+            import json
+            parsed = json.loads(result)
+            return parsed.get("isDebugging", False) is True
+        except Exception:
+            return False
     return False
-
 # =============================================================================
 # REGISTER API
 # =============================================================================

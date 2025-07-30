@@ -51,31 +51,31 @@ A comprehensive MCP server that can bridge various LLMS with the x64dbg debugger
 - `MiscRemoteGetProcAddress` - Get API addresses
 - `GetModuleList` - List loaded modules
 
-### Legacy Compatibility
-Additional functions for backward compatibility with older integrations.
 
 ### Quick Setup
 
 1. **Download Plugin**
-   # Grab .dp64 or .dp32 from this repo's build/release directory
-   # Copy to your local: [x64dbg_dir]/release/x64/plugins/
+   - Grab .dp64 or .dp32 from this repo's build/release directory
+   - Copy to your local: [x64dbg_dir]/release/x64/plugins/
 
 2. **Configure Claude Desktop**
-   # Copy x64dbgmcp.py from this repos src directory
-   # Update local claude_desktop_config.json with path to x64dbgmcp.py
-   ```
-         {
+   - Copy x64dbgmcp.py from this repos src directory
+   - Update local claude_desktop_config.json with path to x64dbgmcp.py
+
+```json
+{
   "mcpServers": {
     "x64dbg": {
-      "command": "Path\To\Python",
+      "command": "Path\\To\\Python",
       "args": [
-        "Path\to\x64dbg.py"
+        "Path\\to\\x64dbg.py"
       ]
     }
   }
-         }
-    ```
-3. **Start Debugging**
+}
+```
+      
+4. **Start Debugging**
    - Launch x64dbg
    - Start Claude Desktop
    - Check plugin loaded successfully (ALT+L in x64dbg for logs)
@@ -83,13 +83,13 @@ Additional functions for backward compatibility with older integrations.
 ### Build from Source
 
 
-git clone [repository-url]
-cd x64dbgmcp/build
-cmake .. -DBUILD_X64=ON     # Use -DBUILD_X64=OFF for x86
-cmake --build . --config Release
+- git clone [repository-url]
+- cd x64dbgmcp/build
+- cmake .. -DBUILD_X64=ON (x86 NOT SUPPORTED due to time constraints, types would need modified, registers need adjusted, etc...)
+- cmake --build . --config Release
 
 
-## 🎯 Usage Examples
+## Usage Examples
 
 **Set a breakpoint and analyze:**
 ```
@@ -111,22 +111,6 @@ cmake --build . --config Release
 "Find the pattern '48 8B 05' in the current module"
 ```
 
-## Additional Notes
 
-- Claude is actaully very good at stepping through programs, identifying API's, and just building overrall awareness of a given    binary
-- Some automatic command generation may not work perfectly with DbgCmdExec.
-- The AI can step through code much faster than manual debugging for analysis tasks
-
-
-## 🤝 Contributing
-
-This is my first repository - feedback, improvements, and additional functionality are welcome!
-
-**Areas for improvement:**
-- Function cleanup (some utilities like `IsDebugActive` & 'DbgCmdExec' could be optimized)
-- Better error handling for failed commands
-- Enhanced command validation
-
-## 📺 Demo
+## Demo
 ![Demo of Plug](Showcase.gif)
-
