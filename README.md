@@ -50,12 +50,13 @@ A comprehensive MCP server that can bridge various LLMS with the x64dbg debugger
 
 ### Quick Setup
 
-1. **Download Plugin**
-   - Grab .dp64 or .dp32 from this repo's build/release directory
+1. **x64dbg Configuration**
+   - You only need two files from this repo to get started, the Python file in the src directory, and the .dp64 file from the build\release directory 
+   - Grab .dp64 from this repo's build/release directory
    - Copy to your local: [x64dbg_dir]/release/x64/plugins/
 
-2. **Configure Claude Desktop**
-   - Copy x64dbgmcp.py from this repos src directory
+3. **Configure Claude Desktop**
+   -  x64dbgmcp.py from this repos src directory
    - Update local claude_desktop_config.json with path to x64dbgmcp.py
 
 ```json
