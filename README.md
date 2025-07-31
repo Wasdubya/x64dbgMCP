@@ -4,11 +4,7 @@
 
 A comprehensive MCP server that can bridge various LLMS with the x64dbg debugger, providing direct access to debugging functionality through natural language.
 
-## Features
-
-- **40+ x64dbg SDK Tools** - Complete access to debugging, memory manipulation, and code analysis
-- **Cross-Architecture Support** - Works with both x64dbg and x86dbg
-- **Real-time Debugging** - Step through code, set breakpoints, and analyze memory in real-time
+### **40+ x64dbg SDK Tools** - Complete access to debugging, memory manipulation, and code analysis
 
 ## Available Functions
 
