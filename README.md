@@ -4,10 +4,7 @@
 
 This project is a super useful tool when it comes to dynamic analysis. Listed below are all of the supported SDK functions that can be used from any MCP supported chat prompt as well as all of the installation instructions you might need. If you have any ideas for improvement please share!
 
-### **40+ x64dbg SDK Tools** - Complete access to debugging, memory manipulation, and code analysis
-
-## Available Functions
-
+### **40+ x64dbg SDK Tools** 
 ### Core Debug Control
 - `ExecCommand` - Execute any x64dbg command
 - `IsDebugActive` - Check debugger status
