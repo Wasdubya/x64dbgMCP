@@ -2,7 +2,7 @@
 
 **Model Context Protocol for x64dbg**
 
-A comprehensive MCP server that can bridge various LLMS with the x64dbg debugger, providing direct access to debugging functionality through natural language.
+This project is a super useful tool when it comes to dynamic analysis. Listed below are all of the supported SDK functions that can be used from any MCP supported chat prompt as well as all of the installation instructions you might need. If you have any ideas for improvement please share!
 
 ### **40+ x64dbg SDK Tools** - Complete access to debugging, memory manipulation, and code analysis
 
@@ -80,7 +80,7 @@ A comprehensive MCP server that can bridge various LLMS with the x64dbg debugger
 ### Build from Source
 
 
-- git clone [repository-url]
+- git clone (https://github.com/Wasdubya/x64dbgMCP)
 - cd x64dbgmcp/build
 - cmake .. -DBUILD_X64=ON (x86 NOT SUPPORTED due to time constraints, types would need modified, registers need adjusted, etc...)
 - cmake --build . --config Release
