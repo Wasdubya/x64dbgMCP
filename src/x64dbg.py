@@ -1,11 +1,28 @@
 import sys
-import requests
+import os
+import inspect
 import json
+from typing import Any, Dict, List, Callable
+import requests
 
 from mcp.server.fastmcp import FastMCP
 
 DEFAULT_X64DBG_SERVER = "http://127.0.0.1:8888/"
-x64dbg_server_url = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_X64DBG_SERVER
+
+def _resolve_server_url_from_args_env() -> str:
+    env_url = os.getenv("X64DBG_URL")
+    if env_url and env_url.startswith("http"):
+        return env_url
+    if len(sys.argv) > 1 and isinstance(sys.argv[1], str) and sys.argv[1].startswith("http"):
+        return sys.argv[1]
+    return DEFAULT_X64DBG_SERVER
+
+x64dbg_server_url = _resolve_server_url_from_args_env()
+
+def set_x64dbg_server_url(url: str) -> None:
+    global x64dbg_server_url
+    if url and url.startswith("http"):
+        x64dbg_server_url = url
 
 mcp = FastMCP("x64dbg-mcp")
 
@@ -57,6 +74,106 @@ def safe_post(endpoint: str, data: dict | str):
             return f"Error {response.status_code}: {response.text.strip()}"
     except Exception as e:
         return f"Request failed: {str(e)}"
+
+# =============================================================================
+# TOOL REGISTRY INTROSPECTION (for CLI/Claude tool-use)
+# =============================================================================
+
+def _get_mcp_tools_registry() -> Dict[str, Callable[..., Any]]:
+    """
+    Build a registry of available MCP-exposed tool callables in this module.
+    Heuristic: exported callables starting with an uppercase letter.
+    """
+    registry: Dict[str, Callable[..., Any]] = {}
+    for name, obj in globals().items():
+        if not name or not name[0].isupper():
+            continue
+        if callable(obj):
+            try:
+                # Validate signature to ensure it's a plain function
+                inspect.signature(obj)
+                registry[name] = obj
+            except (TypeError, ValueError):
+                pass
+    return registry
+
+def _describe_tool(name: str, func: Callable[..., Any]) -> Dict[str, Any]:
+    sig = inspect.signature(func)
+    params = []
+    for p in sig.parameters.values():
+        if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            # Skip non-JSON friendly params in schema
+            continue
+        params.append({
+            "name": p.name,
+            "required": p.default is inspect._empty,
+            "type": "string" if p.annotation in (str, inspect._empty) else ("boolean" if p.annotation is bool else ("integer" if p.annotation is int else "string"))
+        })
+    return {
+        "name": name,
+        "description": (func.__doc__ or "").strip(),
+        "params": params
+    }
+
+def _list_tools_description() -> List[Dict[str, Any]]:
+    reg = _get_mcp_tools_registry()
+    return [_describe_tool(n, f) for n, f in sorted(reg.items(), key=lambda x: x[0].lower())]
+
+def _invoke_tool_by_name(name: str, args: Dict[str, Any]) -> Any:
+    reg = _get_mcp_tools_registry()
+    if name not in reg:
+        return {"error": f"Unknown tool: {name}"}
+    func = reg[name]
+    try:
+        # Prefer keyword invocation; convert all values to strings unless bool/int expected
+        sig = inspect.signature(func)
+        bound_kwargs: Dict[str, Any] = {}
+        for p in sig.parameters.values():
+            if p.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD, inspect.Parameter.POSITIONAL_ONLY):
+                continue
+            if p.name in args:
+                value = args[p.name]
+                # Simple coercions for common types
+                if p.annotation is bool and isinstance(value, str):
+                    value = value.lower() in ("1", "true", "yes", "on")
+                elif p.annotation is int and isinstance(value, str):
+                    try:
+                        value = int(value, 0)
+                    except Exception:
+                        try:
+                            value = int(value)
+                        except Exception:
+                            pass
+                bound_kwargs[p.name] = value
+        return func(**bound_kwargs)
+    except Exception as e:
+        return {"error": str(e)}
+
+# =============================================================================
+# Claude block normalization helpers
+# =============================================================================
+
+def _block_to_dict(block: Any) -> Dict[str, Any]:
+    try:
+        # Newer anthropic SDK objects are Pydantic models
+        if hasattr(block, "model_dump") and callable(getattr(block, "model_dump")):
+            return block.model_dump()
+    except Exception:
+        pass
+    if isinstance(block, dict):
+        return block
+    btype = getattr(block, "type", None)
+    if btype == "text":
+        return {"type": "text", "text": getattr(block, "text", "")}
+    if btype == "tool_use":
+        return {
+            "type": "tool_use",
+            "id": getattr(block, "id", None),
+            "name": getattr(block, "name", None),
+            "input": getattr(block, "input", {}) or {},
+        }
+    # Fallback generic representation
+    return {"type": str(btype or "unknown"), "raw": str(block)}
 
 # =============================================================================
 # UNIFIED COMMAND EXECUTION
@@ -747,5 +864,174 @@ def MemoryBase(addr: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
+import argparse
+
+def main_cli():
+    parser = argparse.ArgumentParser(description="x64dbg MCP CLI wrapper")
+
+    parser.add_argument("tool", help="Tool/function name (e.g. ExecCommand, RegisterGet, MemoryRead)")
+    parser.add_argument("args", nargs="*", help="Arguments for the tool")
+    parser.add_argument("--x64dbg-url", dest="x64dbg_url", default=os.getenv("X64DBG_URL"), help="x64dbg HTTP server URL")
+
+    opts = parser.parse_args()
+
+    if opts.x64dbg_url:
+        set_x64dbg_server_url(opts.x64dbg_url)
+
+    # Map CLI call → actual MCP tool function
+    if opts.tool in globals():
+        func = globals()[opts.tool]
+        if callable(func):
+            try:
+                # Try to unpack args dynamically
+                result = func(*opts.args)
+                print(json.dumps(result, indent=2))
+            except TypeError as e:
+                print(f"Error calling {opts.tool}: {e}")
+        else:
+            print(f"{opts.tool} is not callable")
+    else:
+        print(f"Unknown tool: {opts.tool}")
+
+
+def claude_cli():
+    parser = argparse.ArgumentParser(description="Chat with Claude using x64dbg MCP tools")
+    parser.add_argument("prompt", nargs=argparse.REMAINDER, help="Initial user prompt. If empty, read from stdin")
+    parser.add_argument("--model", dest="model", default=os.getenv("ANTHROPIC_MODEL", "claude-3-7-sonnet-2025-06-20"), help="Claude model")
+    parser.add_argument("--api-key", dest="api_key", default=os.getenv("ANTHROPIC_API_KEY"), help="Anthropic API key")
+    parser.add_argument("--system", dest="system", default="You can control x64dbg via MCP tools.", help="System prompt")
+    parser.add_argument("--max-steps", dest="max_steps", type=int, default=100, help="Max tool-use iterations")
+    parser.add_argument("--x64dbg-url", dest="x64dbg_url", default=os.getenv("X64DBG_URL"), help="x64dbg HTTP server URL")
+    parser.add_argument("--no-tools", dest="no_tools", action="store_true", help="Disable tool-use (text-only)")
+
+    opts = parser.parse_args()
+
+    if opts.x64dbg_url:
+        set_x64dbg_server_url(opts.x64dbg_url)
+
+    # Resolve prompt
+    user_prompt = " ".join(opts.prompt).strip()
+    if not user_prompt:
+        user_prompt = sys.stdin.read().strip()
+    if not user_prompt:
+        print("No prompt provided.")
+        return
+
+    try:
+        import anthropic
+    except Exception as e:
+        print("Anthropic SDK not installed. Run: pip install anthropic")
+        print(str(e))
+        return
+
+    if not opts.api_key:
+        print("Missing Anthropic API key. Set ANTHROPIC_API_KEY or pass --api-key.")
+        return
+
+    client = anthropic.Anthropic(api_key=opts.api_key)
+
+    tools_spec: List[Dict[str, Any]] = []
+    if not opts.no_tools:
+        tools_spec = [
+            {
+                "name": "mcp_list_tools",
+                "description": "List available MCP tool functions and their parameters.",
+                "input_schema": {"type": "object", "properties": {}},
+            },
+            {
+                "name": "mcp_call_tool",
+                "description": "Invoke an MCP tool by name with arguments.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "tool": {"type": "string"},
+                        "args": {"type": "object"}
+                    },
+                    "required": ["tool"],
+                },
+            },
+        ]
+
+    messages: List[Dict[str, Any]] = [
+        {"role": "user", "content": user_prompt}
+    ]
+
+    step = 0
+    while True:
+        step += 1
+        response = client.messages.create(
+            model=opts.model,
+            system=opts.system,
+            messages=messages,
+            tools=tools_spec if not opts.no_tools else None,
+            max_tokens=1024,
+        )
+
+        # Print any assistant text
+        assistant_text_chunks: List[str] = []
+        tool_uses: List[Dict[str, Any]] = []
+        for block in response.content:
+            b = _block_to_dict(block)
+            if b.get("type") == "text":
+                assistant_text_chunks.append(b.get("text", ""))
+            elif b.get("type") == "tool_use":
+                tool_uses.append(b)
+
+        if assistant_text_chunks:
+            print("\n".join(assistant_text_chunks))
+
+        if not tool_uses or opts.no_tools:
+            break
+
+        # Prepare tool results as a new user message
+        tool_result_blocks: List[Dict[str, Any]] = []
+        for tu in tool_uses:
+            name = tu.get("name")
+            tu_id = tu.get("id")
+            input_obj = tu.get("input", {}) or {}
+            result: Any
+            if name == "mcp_list_tools":
+                result = {"tools": _list_tools_description()}
+            elif name == "mcp_call_tool":
+                tool_name = input_obj.get("tool")
+                args = input_obj.get("args", {}) or {}
+                result = _invoke_tool_by_name(tool_name, args)
+            else:
+                result = {"error": f"Unknown tool: {name}"}
+
+            # Ensure serializable content (string)
+            try:
+                result_text = json.dumps(result)
+            except Exception:
+                result_text = str(result)
+
+            tool_result_blocks.append({
+                "type": "tool_result",
+                "tool_use_id": tu_id,
+                "content": result_text,
+            })
+
+        # Normalize assistant content to plain dicts
+        assistant_blocks = [_block_to_dict(b) for b in response.content]
+        messages.append({"role": "assistant", "content": assistant_blocks})
+        messages.append({"role": "user", "content": tool_result_blocks})
+
+        if step >= opts.max_steps:
+            break
+
 if __name__ == "__main__":
-    mcp.run()
+    # Support multiple modes:
+    #  - "serve" or "--serve": run MCP server
+    #  - "claude" subcommand: run Claude Messages chat loop
+    #  - default: tool invocation CLI
+    if len(sys.argv) > 1:
+        if sys.argv[1] in ("--serve", "serve"):
+            mcp.run()
+        elif sys.argv[1] == "claude":
+            # Shift off the subcommand and re-dispatch
+            sys.argv.pop(1)
+            claude_cli()
+        else:
+            main_cli()
+    else:
+        mcp.run()
