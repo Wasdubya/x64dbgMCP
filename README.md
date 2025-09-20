@@ -4,7 +4,9 @@
 
 A comprehensive MCP server that can bridge various LLMS with the x64dbg debugger, providing direct access to debugging functionality through natural language.
 
-## Features
+**Latest Addition**
+- Prompting x64dbg.py from CMD with the Claude Messages API for more versatility. (Longer tool calls for a monetary loss but a technical gain :fire: AI economics :grin: ) 
+##  Features
 
 - **40+ x64dbg SDK Tools** - Complete access to debugging, memory manipulation, and code analysis
 - **Cross-Architecture Support** - Works with both x64dbg and x86dbg
