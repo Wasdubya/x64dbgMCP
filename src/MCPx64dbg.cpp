@@ -47,7 +47,7 @@
 #pragma comment(lib, "ws2_32.lib")
 
 // Plugin information
-#define PLUGIN_NAME "x64dbg HTTP Server"
+#define PLUGIN_NAME "x64DBG MCP Server"
 #define PLUGIN_VERSION 1
 
 // Default settings
@@ -64,8 +64,8 @@ std::mutex g_httpMutex;
 SOCKET g_serverSocket = INVALID_SOCKET;
 
 // Add these for menu handles
-int g_hMainMenu;
-int g_hMenuStatusEntry;
+// Menu entry id for status (must remain constant)
+static const int MENUENTRY_STATUS_ID = 1;
 
 // Forward declarations
 void updateMenuStatus(); // Add this line
@@ -95,20 +95,20 @@ void updateMenuStatus()
 
     if (!g_httpServerRunning)
     {
-        _plugin_menuentrysetname(g_pluginHandle, g_hMenuStatusEntry, "Status: Stopped");
-        _plugin_menuentryseticon(g_pluginHandle, g_hMenuStatusEntry, &redIcon);
+        _plugin_menuentrysetname(g_pluginHandle, MENUENTRY_STATUS_ID, "Status: Stopped");
+        _plugin_menuentryseticon(g_pluginHandle, MENUENTRY_STATUS_ID, &redIcon);
     }
     else
     {
         if (g_clientConnected)
         {
-            _plugin_menuentrysetname(g_pluginHandle, g_hMenuStatusEntry, "Status: Connected");
-            _plugin_menuentryseticon(g_pluginHandle, g_hMenuStatusEntry, &greenIcon);
+            _plugin_menuentrysetname(g_pluginHandle, MENUENTRY_STATUS_ID, "Status: Connected");
+            _plugin_menuentryseticon(g_pluginHandle, MENUENTRY_STATUS_ID, &greenIcon);
         }
         else
         {
-            _plugin_menuentrysetname(g_pluginHandle, g_hMenuStatusEntry, "Status: Listening");
-            _plugin_menuentryseticon(g_pluginHandle, g_hMenuStatusEntry, &greenIcon); // Still green as it's running
+            _plugin_menuentrysetname(g_pluginHandle, MENUENTRY_STATUS_ID, "Status: Listening");
+            _plugin_menuentryseticon(g_pluginHandle, MENUENTRY_STATUS_ID, &greenIcon); // Still green as it's running
         }
     }
 }
@@ -130,9 +130,6 @@ bool pluginInit(PLUG_INITSTRUCT* initStruct) {
     // Register commands
     registerCommands();
 
-    // Setup menu
-    setupMenu();
-    
     // Start the HTTP server
     if (startHttpServer()) {
         _plugin_logprintf("x64dbg MCP Server started on port %d\n", g_httpPort);
@@ -169,9 +166,9 @@ extern "C" __declspec(dllexport) void plugstop() {
 }
 
 extern "C" __declspec(dllexport) void plugsetup(PLUG_SETUPSTRUCT* setupStruct) {
-    // This is the correct place for menu setup.
-    g_hMainMenu = _plugin_menuadd(setupStruct->hMenu, "MCP Server");
-    g_hMenuStatusEntry = _plugin_menuaddentry(g_hMainMenu, 0, "Status: Initializing...");
+    // Add status entry directly under the plugin's menu (no extra submenu)
+    g_hMainMenu = setupStruct->hMenu;
+    _plugin_menuaddentry(g_hMainMenu, MENUENTRY_STATUS_ID, "Status: Initializing...");
     updateMenuStatus();
 }
 
