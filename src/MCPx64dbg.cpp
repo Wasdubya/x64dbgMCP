@@ -91,6 +91,7 @@ void registerCommands();
 void updateMenuStatus()
 {
     ICONDATA redIcon = { R_ICON_DATA, sizeof(R_ICON_DATA) };
+    ICONDATA yellowIcon = { Y_ICON_DATA, sizeof(Y_ICON_DATA) };
     ICONDATA greenIcon = { G_ICON_DATA, sizeof(G_ICON_DATA) };
 
     if (!g_httpServerRunning)
@@ -108,7 +109,7 @@ void updateMenuStatus()
         else
         {
             _plugin_menuentrysetname(g_pluginHandle, MENUENTRY_STATUS_ID, "Status: Listening");
-            _plugin_menuentryseticon(g_pluginHandle, MENUENTRY_STATUS_ID, &greenIcon); // Still green as it's running
+            _plugin_menuentryseticon(g_pluginHandle, MENUENTRY_STATUS_ID, &yellowIcon); // Use yellow for listening
         }
     }
 }
