@@ -47,7 +47,7 @@
 #pragma comment(lib, "ws2_32.lib")
 
 // Plugin information
-#define PLUGIN_NAME "x64DBG MCP Server"
+#define PLUGIN_NAME "MCP - x64DBG Server"
 #define PLUGIN_VERSION 1
 
 // Default settings
@@ -126,28 +126,28 @@ bool pluginInit(PLUG_INITSTRUCT* initStruct) {
     strncpy_s(initStruct->pluginName, PLUGIN_NAME, _TRUNCATE);
     g_pluginHandle = initStruct->pluginHandle;
     
-    _plugin_logputs("x64dbg MCP Server plugin loading...");
+    _plugin_logputs("MCP - x64DBG Server plugin loading...");
     
     // Register commands
     registerCommands();
 
     // Start the HTTP server
     if (startHttpServer()) {
-        _plugin_logprintf("x64dbg MCP Server started on port %d\n", g_httpPort);
+        _plugin_logprintf("MCP - x64DBG Server started on port %d\n", g_httpPort);
     } else {
-        _plugin_logputs("Failed to start x64dbg MCP Server!");
+        _plugin_logputs("Failed to start MCP - x64DBG Server!");
     }
     
-    _plugin_logputs("x64dbg MCP Server plugin loaded!");
+    _plugin_logputs("MCP - x64DBG Server plugin loaded!");
     return true;
 }
 
 // Stop the plugin
 void pluginStop() {
-    _plugin_logputs("Stopping x64dbg MCP Server...");
+    _plugin_logputs("Stopping MCP - x64DBG Server...");
     stopHttpServer();
     // No need to clear the menu here, x64dbg handles it.
-    _plugin_logputs("x64dbg MCP Server stopped.");
+    _plugin_logputs("MCP - x64DBG Server stopped.");
 }
 
 // Plugin setup
