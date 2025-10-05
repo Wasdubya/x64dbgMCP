@@ -1,39 +1,36 @@
-name: Build x64 Plugin
+name: Build C++ x64dbg Plugin
 
 on:
-  push:
-    branches: [ main ]
-    paths: [ 'src/**', 'include/**', 'CMakeLists.txt' ]
-  pull_request:
-    branches: [ main ]
-    paths: [ 'src/**', 'include/**', 'CMakeLists.txt' ]
   workflow_dispatch:
+  push:
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/build-cpp-x64.yml'
 
 jobs:
-  build-x64:
+  build:
     runs-on: windows-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v1.3
-      
-    - name: Setup CMake
-      uses: lukka/run-cmake@v4
-      with:
-        cmakeListsTxtPath: 'CMakeLists.txt'
-        buildDirectory: 'build-x64'
-        cmakeArgs: '-A x64 -DBUILD_X64=ON'
-        
-    - name: Build x64 Plugin
-      run: |
-        cmake --build build-x64 --config Release
-        
-    - name: Upload x64 Plugin Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: AgentSmithers_x64dbgMCP_x64Plugin
-        path: build-x64/Release/*.dp64
-        retention-days: 30
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Configure (x64)
+        run: cmake -S . -B build-x64 -A x64 -DBUILD_X64=ON
+
+      - name: Build (Release)
+        run: cmake --build build-x64 --config Release --parallel
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MCPx64dbg_x64
+          path: |
+            build-x64/Release/*.dp64
+            build-x64/Release/*.pdb
+          if-no-files-found: error
+
