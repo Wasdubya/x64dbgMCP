@@ -25,6 +25,9 @@
 #include "pluginsdk/_scriptapi_misc.h"
 #include <iomanip>  // For std::setw and std::setfill
 
+// Add this include for the icons
+#include "icons.h"
+
 // Socket includes - after Windows.h
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -55,11 +58,17 @@
 int g_pluginHandle;
 HANDLE g_httpServerThread = NULL;
 bool g_httpServerRunning = false;
+bool g_clientConnected = false; // Add this line
 int g_httpPort = DEFAULT_PORT;
 std::mutex g_httpMutex;
 SOCKET g_serverSocket = INVALID_SOCKET;
 
+// Add these for menu handles
+int g_hMainMenu;
+int g_hMenuStatusEntry;
+
 // Forward declarations
+void updateMenuStatus(); // Add this line
 bool startHttpServer();
 void stopHttpServer();
 DWORD WINAPI HttpServerThread(LPVOID lpParam);
@@ -73,6 +82,37 @@ std::string urlDecode(const std::string& str);
 bool cbEnableHttpServer(int argc, char* argv[]);
 bool cbSetHttpPort(int argc, char* argv[]);
 void registerCommands();
+void setupMenu(); // Add this line
+
+//=============================================================================
+// UI Functions
+//=============================================================================
+
+void updateMenuStatus()
+{
+    ICONDATA redIcon = { R_ICON_DATA, sizeof(R_ICON_DATA) };
+    ICONDATA greenIcon = { G_ICON_DATA, sizeof(G_ICON_DATA) };
+
+    if (!g_httpServerRunning)
+    {
+        _plugin_menuentrysetname(g_pluginHandle, g_hMenuStatusEntry, "Status: Stopped");
+        _plugin_menuentryseticon(g_pluginHandle, g_hMenuStatusEntry, &redIcon);
+    }
+    else
+    {
+        if (g_clientConnected)
+        {
+            _plugin_menuentrysetname(g_pluginHandle, g_hMenuStatusEntry, "Status: Connected");
+            _plugin_menuentryseticon(g_pluginHandle, g_hMenuStatusEntry, &greenIcon);
+        }
+        else
+        {
+            _plugin_menuentrysetname(g_pluginHandle, g_hMenuStatusEntry, "Status: Listening");
+            _plugin_menuentryseticon(g_pluginHandle, g_hMenuStatusEntry, &greenIcon); // Still green as it's running
+        }
+    }
+}
+
 
 //=============================================================================
 // Plugin Interface Implementation
@@ -85,31 +125,37 @@ bool pluginInit(PLUG_INITSTRUCT* initStruct) {
     strncpy_s(initStruct->pluginName, PLUGIN_NAME, _TRUNCATE);
     g_pluginHandle = initStruct->pluginHandle;
     
-    _plugin_logputs("x64dbg HTTP Server plugin loading...");
+    _plugin_logputs("x64dbg MCP Server plugin loading...");
     
     // Register commands
     registerCommands();
+
+    // Setup menu
+    setupMenu();
     
     // Start the HTTP server
     if (startHttpServer()) {
-        _plugin_logprintf("x64dbg HTTP Server started on port %d\n", g_httpPort);
+        _plugin_logprintf("x64dbg MCP Server started on port %d\n", g_httpPort);
     } else {
-        _plugin_logputs("Failed to start HTTP server!");
+        _plugin_logputs("Failed to start x64dbg MCP Server!");
     }
     
-    _plugin_logputs("x64dbg HTTP Server plugin loaded!");
+    _plugin_logputs("x64dbg MCP Server plugin loaded!");
     return true;
 }
 
 // Stop the plugin
 void pluginStop() {
-    _plugin_logputs("Stopping x64dbg HTTP Server...");
+    _plugin_logputs("Stopping x64dbg MCP Server...");
     stopHttpServer();
-    _plugin_logputs("x64dbg HTTP Server stopped.");
+    // No need to clear the menu here, x64dbg handles it.
+    _plugin_logputs("x64dbg MCP Server stopped.");
 }
 
 // Plugin setup
 bool pluginSetup() {
+    // This function is for general setup.
+    // The menu is set up in plugsetup.
     return true;
 }
 
@@ -123,7 +169,10 @@ extern "C" __declspec(dllexport) void plugstop() {
 }
 
 extern "C" __declspec(dllexport) void plugsetup(PLUG_SETUPSTRUCT* setupStruct) {
-    pluginSetup();
+    // This is the correct place for menu setup.
+    g_hMainMenu = _plugin_menuadd(setupStruct->hMenu, "MCP Server");
+    g_hMenuStatusEntry = _plugin_menuaddentry(g_hMainMenu, 0, "Status: Initializing...");
+    updateMenuStatus();
 }
 
 //=============================================================================
@@ -147,6 +196,7 @@ bool startHttpServer() {
     }
     
     g_httpServerRunning = true;
+    updateMenuStatus(); // Update UI
     return true;
 }
 
@@ -156,6 +206,7 @@ void stopHttpServer() {
     
     if (g_httpServerRunning) {
         g_httpServerRunning = false;
+        g_clientConnected = false; // Reset client status
         
         // Close the server socket to unblock any accept calls
         if (g_serverSocket != INVALID_SOCKET) {
@@ -170,6 +221,7 @@ void stopHttpServer() {
             g_httpServerThread = NULL;
         }
     }
+    updateMenuStatus(); // Update UI
 }
 
 // URL decode function
@@ -266,6 +318,11 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
             continue;
         }
         
+        // Client connected!
+        g_clientConnected = true;
+        updateMenuStatus();
+        _plugin_logputs("Client connected to MCP server.");
+
         // Read the HTTP request
         std::string requestData = readHttpRequest(clientSocket);
         
@@ -1333,6 +1390,11 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
         
         // Close the client socket
         closesocket(clientSocket);
+
+        // Client disconnected
+        g_clientConnected = false;
+        updateMenuStatus();
+        _plugin_logputs("Client disconnected from MCP server.");
     }
 
     // Clean up
@@ -1525,4 +1587,9 @@ void registerCommands() {
                            "Toggle HTTP server on/off");
     _plugin_registercommand(g_pluginHandle, "httpport", cbSetHttpPort, 
                            "Set HTTP server port");
+}
+
+void setupMenu()
+{
+    // This function is no longer needed as setup is done in plugsetup
 }
