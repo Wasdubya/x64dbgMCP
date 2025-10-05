@@ -1156,12 +1156,21 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
                         continue;
                     }
-                    _plugin_logprintf("Converted address: 0x%llx\n", addr);
+                    {
+                        std::stringstream logss;
+                        logss << "Converted address: 0x" << std::hex << addr;
+                        _plugin_logprintf("%s\n", logss.str().c_str());
+                    }
                     
                     // Get the base address and size
                     duint size = 0;
                     duint baseAddr = DbgMemFindBaseAddr(addr, &size);
-                    _plugin_logprintf("Base address found: 0x%llx, size: %llu\n", baseAddr, size);
+                    {
+                        std::stringstream logss;
+                        logss << "Base address found: 0x" << std::hex << baseAddr
+                              << ", size: 0x" << std::hex << size;
+                        _plugin_logprintf("%s\n", logss.str().c_str());
+                    }
                     if (baseAddr == 0) {
                         sendHttpResponse(clientSocket, 404, "text/plain", "No module found for this address");
                     }
