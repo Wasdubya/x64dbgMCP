@@ -7,7 +7,7 @@ import requests
 
 from mcp.server.fastmcp import FastMCP
 
-DEFAULT_X64DBG_SERVER = "http://127.0.0.1:8888/"
+DEFAULT_X64DBG_SERVER = "http://127.0.0.1:50400/"
 
 def _resolve_server_url_from_args_env() -> str:
     env_url = os.getenv("X64DBG_URL")

@@ -9,6 +9,7 @@
 #include "pluginsdk/_scriptapi_module.h"
 #include "pluginsdk/_scriptapi_memory.h"
 #include "pluginsdk/_scriptapi_register.h"
+#include "arch_helpers.h"
 #include "pluginsdk/_scriptapi_debug.h"
 #include "pluginsdk/_scriptapi_assembler.h"
 #include "pluginsdk/_scriptapi_comment.h"
@@ -47,7 +48,7 @@
 #define PLUGIN_VERSION 1
 
 // Default settings
-#define DEFAULT_PORT 8888
+#define DEFAULT_PORT 50400
 #define MAX_REQUEST_SIZE 8192
 
 // Global variables
@@ -208,6 +209,11 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
         _plugin_logprintf("Failed to create socket, error: %d\n", WSAGetLastError());
         WSACleanup();
         return 1;
+    }
+    // Allow quick restart after stop
+    {
+        int opt = 1;
+        setsockopt(g_serverSocket, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
     }
     
     // Setup the server address structure
@@ -959,20 +965,20 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
                 else if (path == "/Disasm/GetInstructionAtRIP") {
-                    // Get current RIP and disassemble
-                    duint rip = Script::Register::Get(Script::Register::RIP);
-                    
+                    // Get current IP (RIP on x64, EIP on x86) and disassemble
+                    duint ip = Script::Register::Get(XDBG_IP_REG);
+
                     DISASM_INSTR instr;
-                    DbgDisasmAt(rip, &instr);
-                    
+                    DbgDisasmAt(ip, &instr);
+
                     // Create JSON response
                     std::stringstream ss;
                     ss << "{";
-                    ss << "\"rip\":\"0x" << std::hex << rip << "\",";
+                    ss << "\"" << XDBG_IP_NAME << "\":\"0x" << std::hex << ip << "\",";
                     ss << "\"instruction\":\"" << instr.instruction << "\",";
                     ss << "\"size\":" << std::dec << instr.instr_size;
                     ss << "}";
-                    
+
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
                 else if (path == "/Disasm/StepInWithDisasm") {
@@ -980,16 +986,16 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     Script::Debug::StepIn();
                     
                     // Then get current instruction
-                    duint rip = Script::Register::Get(Script::Register::RIP);
+                    duint ip = Script::Register::Get(XDBG_IP_REG);
                     
                     DISASM_INSTR instr;
-                    DbgDisasmAt(rip, &instr);
+                    DbgDisasmAt(ip, &instr);
                     
                     // Create JSON response
                     std::stringstream ss;
                     ss << "{";
                     ss << "\"step_result\":\"Step in executed\",";
-                    ss << "\"rip\":\"0x" << std::hex << rip << "\",";
+                    ss << "\"" << XDBG_IP_NAME << "\":\"0x" << std::hex << ip << "\",";
                     ss << "\"instruction\":\"" << instr.instruction << "\",";
                     ss << "\"size\":" << std::dec << instr.instr_size;
                     ss << "}";
