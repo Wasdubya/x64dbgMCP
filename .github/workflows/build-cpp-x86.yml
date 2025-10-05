@@ -33,3 +33,4 @@ jobs:
             build-x86/Release/*.dp32
             build-x86/Release/*.pdb
           if-no-files-found: error
+

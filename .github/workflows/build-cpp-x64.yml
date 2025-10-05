@@ -33,3 +33,4 @@ jobs:
             build-x64/Release/*.dp64
             build-x64/Release/*.pdb
           if-no-files-found: error
+
