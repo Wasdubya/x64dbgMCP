@@ -170,6 +170,11 @@ extern "C" __declspec(dllexport) void plugsetup(PLUG_SETUPSTRUCT* setupStruct) {
     // Add status entry directly under the plugin's menu (no extra submenu)
     g_hMainMenu = setupStruct->hMenu;
     _plugin_menuaddentry(g_hMainMenu, MENUENTRY_STATUS_ID, "Status: Initializing...");
+
+    // Set the main icon for the plugin menu
+    ICONDATA mainIcon = { MAIN_ICON_DATA, sizeof(MAIN_ICON_DATA) };
+    _plugin_menuseticon(g_hMainMenu, &mainIcon);
+
     updateMenuStatus();
 }
 
