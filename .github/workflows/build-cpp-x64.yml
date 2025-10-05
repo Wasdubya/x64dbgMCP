@@ -1,0 +1,35 @@
+name: Build C++ x64dbg Plugin
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/build-cpp-x64.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Configure (x64)
+        run: cmake -S . -B build-x64 -A x64 -DBUILD_X64=ON
+
+      - name: Build (Release)
+        run: cmake --build build-x64 --config Release --parallel
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MCPx64dbg_x64
+          path: |
+            build-x64/Release/*.dp64
+            build-x64/Release/*.pdb
+          if-no-files-found: error
