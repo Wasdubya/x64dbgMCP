@@ -66,6 +66,7 @@ SOCKET g_serverSocket = INVALID_SOCKET;
 // Add these for menu handles
 // Menu entry id for status (must remain constant)
 static const int MENUENTRY_STATUS_ID = 1;
+int g_hMainMenu = 0; // plugin menu handle provided in plugsetup
 
 // Forward declarations
 void updateMenuStatus(); // Add this line
@@ -82,7 +83,6 @@ std::string urlDecode(const std::string& str);
 bool cbEnableHttpServer(int argc, char* argv[]);
 bool cbSetHttpPort(int argc, char* argv[]);
 void registerCommands();
-void setupMenu(); // Add this line
 
 //=============================================================================
 // UI Functions
@@ -1586,7 +1586,4 @@ void registerCommands() {
                            "Set HTTP server port");
 }
 
-void setupMenu()
-{
-    // This function is no longer needed as setup is done in plugsetup
-}
+// removed unused setupMenu
