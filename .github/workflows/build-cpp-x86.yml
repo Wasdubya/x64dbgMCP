@@ -1,0 +1,34 @@
+name: Build C++ x32dbg Plugin
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'x64dbgMCP-main/**'
+      - '.github/workflows/build-cpp-x86.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Configure (Win32)
+        run: cmake -S x64dbgMCP-main -B x64dbgMCP-main/build-x86 -A Win32 -DBUILD_X64=OFF
+
+      - name: Build (Release)
+        run: cmake --build x64dbgMCP-main/build-x86 --config Release --parallel
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MCPx64dbg_x32
+          path: |
+            x64dbgMCP-main/build-x86/Release/*.dp32
+            x64dbgMCP-main/build-x86/Release/*.pdb
+          if-no-files-found: error
+
