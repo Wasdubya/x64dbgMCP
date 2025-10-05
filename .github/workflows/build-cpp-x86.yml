@@ -1,34 +1,39 @@
-name: Build C++ x32dbg Plugin
+ name: Build x86 Plugin
 
 on:
-  workflow_dispatch:
   push:
-    paths:
-      - 'x64dbgMCP-main/**'
-      - '.github/workflows/build-cpp-x86.yml'
+    branches: [ main ]
+    paths: [ 'src/**', 'include/**', 'CMakeLists.txt' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'src/**', 'include/**', 'CMakeLists.txt' ]
+  workflow_dispatch:
 
 jobs:
-  build:
+  build-x86:
     runs-on: windows-latest
+    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Configure (Win32)
-        run: cmake -S x64dbgMCP-main -B x64dbgMCP-main/build-x86 -A Win32 -DBUILD_X64=OFF
-
-      - name: Build (Release)
-        run: cmake --build x64dbgMCP-main/build-x86 --config Release --parallel
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: MCPx64dbg_x32
-          path: |
-            x64dbgMCP-main/build-x86/Release/*.dp32
-            x64dbgMCP-main/build-x86/Release/*.pdb
-          if-no-files-found: error
-
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.3
+      
+    - name: Setup CMake
+      uses: lukka/run-cmake@v4
+      with:
+        cmakeListsTxtPath: 'CMakeLists.txt'
+        buildDirectory: 'build-x86'
+        cmakeArgs: '-A Win32 -DBUILD_X64=OFF'
+        
+    - name: Build x86 Plugin
+      run: |
+        cmake --build build-x86 --config Release
+        
+    - name: Upload x86 Plugin Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: AgentSmithers_x64dbgMCP_x32Plugin
+        path: build-x86/Release/*.dp32
+        retention-days: 30
