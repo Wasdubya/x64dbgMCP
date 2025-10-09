@@ -84,10 +84,13 @@ A comprehensive MCP server that can bridge various LLMS with the x64dbg debugger
 
 
 - git clone [repository-url]
-- cd x64dbgmcp/build
-- cmake .. -DBUILD_X64=ON (x86 NOT SUPPORTED due to time constraints, types would need modified, registers need adjusted, etc...)
-- cmake --build . --config Release
-
+- cd x64dbgmcp
+- cmake -S . -B build
+- cmake --build build --target all_plugins --config Release
+**---TIP---**
+use the --target all_plugins argument to specify both x32 and x64, otherwise use -A flag to distinguish between either x64 or Win32 build. For example 32 bit build would be:
+- cmake -S . -B build32  -A Win32 -DBUILD_BOTH_ARCHES=OFF
+- cmake --build build32 --config Release
 
 ## Usage Examples
 
