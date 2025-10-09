@@ -5,11 +5,40 @@ project(MCPx64dbg)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Define architecture (x86 or x64)
-option(BUILD_X64 "Build for 64-bit" ON)
+# Optionally build both 32-bit and 64-bit plugins via a superbuild
+option(BUILD_BOTH_ARCHES "Build both 32-bit and 64-bit plugins from this CMake project" ON)
 
-# Set output file extension based on architecture
-if(BUILD_X64)
+# If requested and supported by MSVC, drive two sub-builds that produce dp32 and dp64
+if(BUILD_BOTH_ARCHES AND MSVC)
+    include(ExternalProject)
+    message(STATUS "Configuring superbuild to produce both dp32 and dp64")
+
+    # 32-bit sub-build
+    ExternalProject_Add(plugin32
+        SOURCE_DIR ${CMAKE_SOURCE_DIR}
+        BINARY_DIR ${CMAKE_BINARY_DIR}/build32
+        CMAKE_ARGS -G "${CMAKE_GENERATOR}" -DCMAKE_GENERATOR_PLATFORM=Win32 -DCMAKE_BUILD_TYPE=$<IF:$<CONFIG:>,${CMAKE_BUILD_TYPE},Release> -DBUILD_BOTH_ARCHES=OFF
+        INSTALL_COMMAND ""
+    )
+
+    # 64-bit sub-build
+    ExternalProject_Add(plugin64
+        SOURCE_DIR ${CMAKE_SOURCE_DIR}
+        BINARY_DIR ${CMAKE_BINARY_DIR}/build64
+        CMAKE_ARGS -G "${CMAKE_GENERATOR}" -DCMAKE_GENERATOR_PLATFORM=x64 -DCMAKE_BUILD_TYPE=$<IF:$<CONFIG:>,${CMAKE_BUILD_TYPE},Release> -DBUILD_BOTH_ARCHES=OFF
+        INSTALL_COMMAND ""
+    )
+
+    add_custom_target(all_plugins DEPENDS plugin32 plugin64)
+
+    message(STATUS "Use 'cmake --build . --target all_plugins' to build both dp32 and dp64")
+
+    # Stop processing the single-arch build logic in superbuild mode
+    return()
+endif()
+
+# Detect target architecture from the generator/toolchain (authoritative) for single-arch builds
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(PLUGIN_EXT ".dp64")
     set(ARCH_BITS 64)
     set(ARCH_SUFFIX "_x64")
@@ -44,7 +73,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 )
 
 # Define macro for architecture
-if(BUILD_X64)
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     target_compile_definitions(${PROJECT_NAME} PRIVATE -D_WIN64)
 else()
     target_compile_definitions(${PROJECT_NAME} PRIVATE -D_WIN32)
@@ -99,18 +128,18 @@ target_link_libraries(${PROJECT_NAME}
         ${LZ4_LIB}
         ${XEDPARSE_LIB}
 )
+
 if (CMAKE_SIZEOF_VOID_P EQUAL 4)
     target_link_libraries(${PROJECT_NAME}
             ${X64DBG_SDK_PATH}/pluginsdk/x32dbg.lib
             ${X64DBG_SDK_PATH}/pluginsdk/x32bridge.lib
-
     )
 elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
     target_link_libraries(${PROJECT_NAME}
             ${X64DBG_SDK_PATH}/pluginsdk/x64dbg.lib
             ${X64DBG_SDK_PATH}/pluginsdk/x64bridge.lib
     )
-endif ()
+endif()
 # Just show information about where the plugin is built
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E echo ""

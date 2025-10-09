@@ -42,6 +42,28 @@
 // Link with ws2_32.lib
 #pragma comment(lib, "ws2_32.lib")
 
+// Link against correct x64dbg library depending on architecture
+#ifdef _WIN64
+#pragma comment(lib, "x64dbg.lib")
+#else
+#pragma comment(lib, "x32dbg.lib")
+#endif
+
+// Architecture-aware formatting and register macros
+#ifdef _WIN64
+#define FMT_DUINT_HEX "0x%llx"
+#define FMT_DUINT_DEC "%llu"
+#define DUINT_CAST_PRINTF(v) (unsigned long long)(v)
+#define DUSIZE_CAST_PRINTF(v) (unsigned long long)(v)
+#define REG_IP Script::Register::RIP
+#else
+#define FMT_DUINT_HEX "0x%08X"
+#define FMT_DUINT_DEC "%u"
+#define DUINT_CAST_PRINTF(v) (unsigned int)(v)
+#define DUSIZE_CAST_PRINTF(v) (unsigned int)(v)
+#define REG_IP Script::Register::EIP
+#endif
+
 // Plugin information
 #define PLUGIN_NAME "x64dbg HTTP Server"
 #define PLUGIN_VERSION 1
@@ -458,7 +480,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     else if (regName == "RDI" || regName == "rdi") reg = Script::Register::RDI;
                     else if (regName == "RBP" || regName == "rbp") reg = Script::Register::RBP;
                     else if (regName == "RSP" || regName == "rsp") reg = Script::Register::RSP;
-                    else if (regName == "RIP" || regName == "rip") reg = Script::Register::RIP;
+                    else if (regName == "RIP" || regName == "rip") {
+#ifdef _WIN64
+                        reg = Script::Register::RIP;
+#else
+                        // On x86, map RIP queries to EIP for compatibility
+                        reg = Script::Register::EIP;
+#endif
+                    }
                     else if (regName == "R8" || regName == "r8") reg = Script::Register::R8;
                     else if (regName == "R9" || regName == "r9") reg = Script::Register::R9;
                     else if (regName == "R10" || regName == "r10") reg = Script::Register::R10;
@@ -506,7 +535,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     else if (regName == "RDI" || regName == "rdi") reg = Script::Register::RDI;
                     else if (regName == "RBP" || regName == "rbp") reg = Script::Register::RBP;
                     else if (regName == "RSP" || regName == "rsp") reg = Script::Register::RSP;
-                    else if (regName == "RIP" || regName == "rip") reg = Script::Register::RIP;
+                    else if (regName == "RIP" || regName == "rip") {
+#ifdef _WIN64
+                        reg = Script::Register::RIP;
+#else
+                        reg = Script::Register::EIP;
+#endif
+                    }
                     else if (regName == "R8" || regName == "r8") reg = Script::Register::R8;
                     else if (regName == "R9" || regName == "r9") reg = Script::Register::R9;
                     else if (regName == "R10" || regName == "r10") reg = Script::Register::R10;
@@ -959,8 +994,8 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
                 else if (path == "/Disasm/GetInstructionAtRIP") {
-                    // Get current RIP and disassemble
-                    duint rip = Script::Register::Get(Script::Register::RIP);
+                    // Get current IP (RIP/EIP) and disassemble
+                    duint rip = Script::Register::Get(REG_IP);
                     
                     DISASM_INSTR instr;
                     DbgDisasmAt(rip, &instr);
@@ -980,7 +1015,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     Script::Debug::StepIn();
                     
                     // Then get current instruction
-                    duint rip = Script::Register::Get(Script::Register::RIP);
+                    duint rip = Script::Register::Get(REG_IP);
                     
                     DISASM_INSTR instr;
                     DbgDisasmAt(rip, &instr);
@@ -1150,12 +1185,12 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
                         continue;
                     }
-                    _plugin_logprintf("Converted address: 0x%llx\n", addr);
+                    _plugin_logprintf("Converted address: " FMT_DUINT_HEX "\n", DUINT_CAST_PRINTF(addr));
                     
                     // Get the base address and size
                     duint size = 0;
                     duint baseAddr = DbgMemFindBaseAddr(addr, &size);
-                    _plugin_logprintf("Base address found: 0x%llx, size: %llu\n", baseAddr, size);
+                    _plugin_logprintf("Base address found: " FMT_DUINT_HEX ", size: " FMT_DUINT_DEC "\n", DUINT_CAST_PRINTF(baseAddr), DUSIZE_CAST_PRINTF(size));
                     if (baseAddr == 0) {
                         sendHttpResponse(clientSocket, 404, "text/plain", "No module found for this address");
                     }
