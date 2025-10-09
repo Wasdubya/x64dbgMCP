@@ -89,7 +89,8 @@ A comprehensive MCP server that can bridge various LLMS with the x64dbg debugger
 - cmake --build build --target all_plugins --config Release
 
 **---TIP---**
-use the --target all_plugins argument to specify both x32 and x64, otherwise use -A flag to distinguish between either x64 or Win32 build. For example 32 bit build would be:
+
+Use the --target all_plugins argument to specify both x32 and x64, otherwise use -A flag to distinguish between either x64 or Win32 build. For example 32 bit build would be:
 - cmake -S . -B build32  -A Win32 -DBUILD_BOTH_ARCHES=OFF
 - cmake --build build32 --config Release
 
