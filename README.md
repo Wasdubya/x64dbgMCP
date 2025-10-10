@@ -1,9 +1,9 @@
 <h1 align="center"><b> x64dbg MCP </b> </h1>
 
-<img src="https://raw.githubusercontent.com/Wasdubya/x64dbgMCP/main/side%20profile%20of%20a%20voxel%20spider%20walking.jpg" width="100%" height="50%" />
+<img src="https://raw.githubusercontent.com/Wasdubya/x64dbgMCP/main/side%20profile%20of%20a%20voxel%20spider%20walking.jpg" width="100%" height="300px" />
 
 
-**Model Context Protocol for x64dbg**
+<h2 align="center"> <b>Model Context Protocol for x64dbg</b> </h2>
 
 A comprehensive MCP server that can bridge various LLMS with the x64dbg debugger, providing direct access to debugging functionality through natural language.
 
