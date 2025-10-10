@@ -9,51 +9,9 @@
 
 <h2 align="center"> <b>Features</b> </h2>
 
-- **40+ x64dbg SDK Tools** - Complete access to debugging, memory manipulation, and code analysis
-- **Cross-Architecture Support** - Works with both x64dbg and x86dbg
-- **Real-time Debugging** - Step through code, set breakpoints, and analyze memory in real-time
-
-## Available Functions
-
-### Core Debug Control
-- `ExecCommand` - Execute any x64dbg command
-- `IsDebugActive` - Check debugger status
-- `IsDebugging` - Check if debugging a process
-
-### Register Operations
-- `RegisterGet` / `RegisterSet` - Read/write CPU registers
-
-### Memory Management
-- `MemoryRead` / `MemoryWrite` - Read/write process memory
-- `MemoryIsValidPtr` - Validate memory addresses
-- `MemoryGetProtect` - Get memory protection flags
-- `MemoryBase` - Find module base addresses
-
-### Debug Control
-- `DebugRun` / `DebugPause` / `DebugStop` - Control execution
-- `DebugStepIn` / `DebugStepOver` / `DebugStepOut` - Step through code
-- `DebugSetBreakpoint` / `DebugDeleteBreakpoint` - Manage breakpoints
-
-### Assembly & Disassembly
-- `AssemblerAssemble` / `AssemblerAssembleMem` - Assemble instructions
-- `DisasmGetInstruction` / `DisasmGetInstructionRange` - Disassemble code
-- `DisasmGetInstructionAtRIP` - Get current instruction
-- `StepInWithDisasm` - Step and disassemble
-
-### Stack Operations
-- `StackPop` / `StackPush` / `StackPeek` - Stack manipulation
-
-### CPU Flags
-- `FlagGet` / `FlagSet` - Read/write CPU flags (ZF, CF, etc.)
-
-### Pattern Matching
-- `PatternFindMem` - Find byte patterns in memory
-
-### Utilities
-- `MiscParseExpression` - Parse x64dbg expressions
-- `MiscRemoteGetProcAddress` - Get API addresses
-- `GetModuleList` - List loaded modules
-
+- **40+ x64dbg SDK Tools** - Provides access to almost every single debugging feature given by the SDK for smart debugging. 
+- **Cross-Architecture Support** - Works with both x64dbg and x86dbg.
+- **API COMPATIBILITY** Provides API access to Claude from CMD for even faster dbeugging and longer consecutive tool chain calls. 
 
 ### Quick Setup
 
