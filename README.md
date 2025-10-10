@@ -1,6 +1,6 @@
 <h1 align="center"><b> x64dbg MCP </b> </h1>
 
-<img src="https://raw.githubusercontent.com/Wasdubya/x64dbgMCP/main/side%20profile%20of%20a%20voxel%20spider%20walking.jpg" width="100%" />
+<img src="https://raw.githubusercontent.com/Wasdubya/x64dbgMCP/main/side%20profile%20of%20a%20voxel%20spider%20walking.jpg" width="100%" height="50%" />
 
 
 **Model Context Protocol for x64dbg**
