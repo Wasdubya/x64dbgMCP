@@ -1,5 +1,5 @@
 <h1 align="center"><b> x64dbg MCP </b> </h1>
-![Header](https://github.com/Wasdubya/x64dbgMCP/blob/main/side%20profile%20of%20a%20voxel%20spider%20walking.jpg)
+![Header](https://raw.githubusercontent.com/Wasdubya/x64dbgMCP/main/side%20profile%20of%20a%20voxel%20spider%20walking.jpg)
 **Model Context Protocol for x64dbg**
 
 A comprehensive MCP server that can bridge various LLMS with the x64dbg debugger, providing direct access to debugging functionality through natural language.
@@ -94,7 +94,9 @@ A comprehensive MCP server that can bridge various LLMS with the x64dbg debugger
 - cmake -S . -B build32  -A Win32 -DBUILD_BOTH_ARCHES=OFF
 - cmake --build build32 --config Release
 
-2. If you do not provide the model you are working with with context of where your exe is, it wont have the capabiltiy to restart the binary if it crashes or hangs. So, provide it with the full path of the binary so it can call the CMDEXEC function like "init C:\Absolute\Path\to\EXE" </b> This will allow for even more automated analysis. </b> 
+2. If you do not provide the model you are working with with context of where your exe is, it wont have the capabiltiy to restart the binary if it crashes or hangs. So, provide it with the full path of the binary so it can call the CMDEXEC function like "init C:\Absolute\Path\to\EXE"
+
+</b> This will allow for even more automated analysis. </b> 
 
 ## Usage Examples
 
