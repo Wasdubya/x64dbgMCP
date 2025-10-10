@@ -5,7 +5,7 @@
 
 <h2 align="center"> <b>Model Context Protocol for x64dbg</b> </h2>
 
-<div align="center"> An MCP server that can bridge various LLMS with the x64dbg debugger, providing direct access to debugging functionality through natural language. </div>
+<div align="center"> An MCP server that can bridge various LLMS with the x64dbg debugger, providing direct access to debugging functionality through prompts! </div>
 
 <h2 align="center"> <b>Features</b> </h2>
 
