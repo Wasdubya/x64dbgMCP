@@ -11,7 +11,8 @@
 
 - **40+ x64dbg SDK Tools** - Provides access to almost every single debugging feature given by the SDK for smart debugging. 
 - **Cross-Architecture Support** - Works with both x64dbg and x86dbg.
-- **API Compatibility** - Provides API access to Claude from CMD for even faster debugging and longer consecutive tool chain calls. 
+- **API Compatibility** - Provides API access to Claude from CMD for even faster debugging and longer consecutive tool chain calls.
+     - Runable from cmd using the args given in the python file. (API Key, max tool calls, Claude is limited to 25 but the api has a much higher limit.)  
 
 ### Quick Setup
 
