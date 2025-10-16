@@ -74,9 +74,9 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 
 # Define macro for architecture
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE -D_WIN64)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE _WIN64)
 else()
-    target_compile_definitions(${PROJECT_NAME} PRIVATE -D_WIN32)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE _WIN32)
 endif()
 
 # Add path to library files
