@@ -2,6 +2,11 @@
 
 <img src="https://raw.githubusercontent.com/Wasdubya/x64dbgMCP/main/side%20profile%20of%20a%20voxel%20spider%20walking.jpg" width="100%" height="300px" />
 
+<p align="center">
+  <a href="https://www.buymeacoffee.com/WASDUBYA" target="_blank">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="200"/>
+  </a>
+</p>
 
 <h2 align="center"> <b>Model Context Protocol for x64dbg</b> </h2>
 
