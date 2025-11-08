@@ -1,93 +1,314 @@
-<h1 align="center"><b> x64dbg MCP </b> </h1>
+# x32dbg MCP Server
 
-<img src="https://raw.githubusercontent.com/Wasdubya/x64dbgMCP/main/side%20profile%20of%20a%20voxel%20spider%20walking.jpg" width="100%" height="300px" />
+**Model Context Protocol (MCP) server for x32dbg debugger**
 
-<p align="center">
-  <a href="https://www.buymeacoffee.com/WASDUBYA" target="_blank">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="200"/>
-  </a>
-</p>
+Give Claude direct access to x32dbg debugging capabilities through natural language!
 
-<h2 align="center"> <b>Model Context Protocol for x64dbg</b> </h2>
+![Architecture](https://img.shields.io/badge/x32dbg-MCP%20Server-blue)
+![Language](https://img.shields.io/badge/C++-Python-green)
+![Status](https://img.shields.io/badge/status-stable-brightgreen)
 
-<div align="center"> An MCP server that can bridge various LLMS with the x64dbg debugger, providing direct access to debugging functionality through prompts! </div>
+---
 
-<h2 align="center"> <b>Features</b> </h2>
+## 🎯 What is This?
 
-- **40+ x64dbg SDK Tools** - Provides access to almost every single debugging feature given by the SDK for smart debugging. 
-- **Cross-Architecture Support** - Works with both x64dbg and x32dbg.
-- **API Compatibility** - Provides API access to Claude from CMD for even faster debugging and longer consecutive tool chain calls.
-     - Runable from cmd using the args given in the python file. (API Key, max tool calls, Claude is limited to 25 but the api has a much higher limit.)
-     - *IF* you have issues connecting to the x64dbg session from the python file, open the logs tab in x64dbg to view what port the plugin is running on and add that as the argument to your python script.   
+This project connects x32dbg (Windows debugger) to Claude AI through the Model Context Protocol (MCP). You can:
 
-### Quick Setup
+- Debug programs using natural language
+- Ask Claude to analyze functions, find crypto, set breakpoints
+- Get real-time debugging context and assistance
+- Automate reverse engineering workflows
 
-1. **Download Plugin**
-   - Grab .dp64 or .dp32 from this repo's build/release directory
-   - Copy to your local: [x64dbg_dir]/release/x64/plugins/
+---
 
-2. **Configure Claude Desktop**
-   - Copy x64dbgmcp.py from this repos src directory
-   - Update local claude_desktop_config.json with path to x64dbgmcp.py
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **x32dbg** installed ([download here](https://x64dbg.com/))
+- **Python 3.8+** ([download here](https://www.python.org/downloads/))
+- **Visual Studio 2019+** with C++ support (for compiling plugin)
+- **Claude Desktop** or **Claude Code** (VSCode extension)
+
+### Installation
+
+#### 1. Build the Plugin
+
+Just double-click `build.bat` - it handles everything!
+
+```batch
+# OR manually:
+cmake -S . -B build32 -A Win32 -DBUILD_BOTH_ARCHES=OFF
+cmake --build build32 --config Release
+```
+
+The compiled plugin will be at: `build/MCPx64dbg.dp32`
+
+#### 2. Install the Plugin
+
+Copy the plugin to your x32dbg plugins folder:
+
+```
+C:\Program Files\x64dbg\release\x32\plugins\MCPx64dbg.dp32
+```
+
+#### 3. Setup Python MCP Server
+
+```bash
+# Install dependencies
+pip install mcp requests
+
+# Test the server
+python mcp_server.py
+```
+
+#### 4. Configure Claude Desktop
+
+Edit your Claude Desktop config file:
+
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+**Mac/Linux:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+Add this configuration:
 
 ```json
 {
   "mcpServers": {
-    "x64dbg": {
-      "command": "Path\\To\\Python",
+    "x32dbg": {
+      "command": "python",
       "args": [
-        "Path\\to\\x64dbg.py"
-      ]
+        "C:\\path\\to\\x64dbgMCP\\mcp_server.py"
+      ],
+      "env": {
+        "X64DBG_URL": "http://127.0.0.1:8888"
+      }
     }
   }
 }
 ```
-      
-4. **Start Debugging**
-   - Launch x64dbg
-   - Start Claude Desktop
-   - Check plugin loaded successfully (ALT+L in x64dbg for logs)
 
-### Build from Source
+For **Claude Code (VSCode)**, add to `.vscode/settings.json`:
 
-
-- git clone [repository-url]
-- cd x64dbgmcp
-- cmake -S . -B build
-- cmake --build build --target all_plugins --config Release
-
-🟨**---TIPS---**🟨
-
-1. Use the --target all_plugins argument to specify both x32 and x64, otherwise use -A flag to distinguish between either x64 or Win32 build. For example 32 bit build would be:
-- cmake -S . -B build32  -A Win32 -DBUILD_BOTH_ARCHES=OFF
-- cmake --build build32 --config Release
-
-2. If you do not provide the model you are working with with context of where your exe is, it wont have the capabiltiy to restart the binary if it crashes or hangs. So, provide it with the full path of the binary so it can call the CMDEXEC function like "init C:\Absolute\Path\to\EXE"
-
-</b> This will allow for even more automated analysis. </b> 
-
-## Usage Examples
-
-**Set a breakpoint and analyze:**
-```
-"Set a breakpoint at the main function and step through the first few instructions"
+```json
+{
+  "mcp.servers": {
+    "x32dbg": {
+      "command": "python",
+      "args": ["C:\\path\\to\\x64dbgMCP\\mcp_server.py"],
+      "env": {
+        "X64DBG_URL": "http://127.0.0.1:8888"
+      }
+    }
+  }
+}
 ```
 
-**Memory analysis:**
+---
+
+## ✅ Verify Installation
+
+1. **Start x32dbg**
+2. **Check plugin loaded:** Press `ALT+L` to open logs, you should see:
+   ```
+   [MCP] Plugin loading...
+   [MCP] HTTP server started on port 8888
+   ```
+3. **Test HTTP API:** Open browser to `http://127.0.0.1:8888/status`
+4. **Start Claude Desktop** and verify x32dbg server appears in MCP settings
+
+---
+
+## 📖 Usage Examples
+
+### Basic Debugging
+
 ```
-"Read 100 bytes from address 0x401000 and show me what's there"
+You: "Set a breakpoint at 0x401000 and show me the disassembly"
+
+Claude: [Uses set_breakpoint and disassemble_at tools]
 ```
 
-**Register inspection:**
+### Function Analysis
+
 ```
-"What's the current value of RAX and RIP registers?"
+You: "Analyze the current function"
+
+Claude: [Uses analyze_function prompt, gets registers, disassembles, analyzes flow]
 ```
 
-**Pattern searching:**
+### Memory Operations
+
 ```
-"Find the pattern '48 8B 05' in the current module"
+You: "Read 32 bytes from ESP and show me the stack contents"
+
+Claude: [Uses get_register("esp") and read_memory tools]
 ```
 
+### Automation
 
-## Demo
-![Demo of Plug](Showcase.gif)
+```
+You: "Find all calls to GetProcAddress in the current module"
+
+Claude: [Uses get_modules, searches memory, sets breakpoints]
+```
+
+---
+
+## 🔧 Available Tools
+
+### Status & Control
+- `get_status()` - Get debugger state
+- `execute_command(cmd)` - Run raw x32dbg command
+- `run_process()` / `pause_process()` - Control execution
+
+### Stepping
+- `step_execution()` - Step into (F7)
+- `step_over()` - Step over (F8)
+- `step_out()` - Step out (Ctrl+F9)
+
+### Registers
+- `get_register(name)` - Read register (EAX, EBX, EIP, etc.)
+- `set_register(name, value)` - Write register
+
+### Memory
+- `read_memory(addr, size)` - Read memory with ASCII view
+- `write_memory(addr, data)` - Write hex bytes
+
+### Breakpoints
+- `set_breakpoint(addr)` - Set BP
+- `delete_breakpoint(addr)` - Remove BP
+
+### Analysis
+- `disassemble_at(addr)` - Get instruction
+- `get_modules()` - List loaded modules
+- `analyze_current_location()` - Get full context
+
+---
+
+## 🎨 MCP Resources
+
+Resources provide Claude with contextual information:
+
+- `debugger://status` - Current debugging state
+- `debugger://modules` - Loaded modules list
+
+---
+
+## 🎭 MCP Prompts
+
+Prompts guide Claude for common tasks:
+
+- `analyze_function` - Start function analysis workflow
+- `find_crypto` - Search for crypto patterns
+- `trace_execution` - Setup execution tracing
+
+---
+
+## 🏗️ Architecture
+
+```
+Claude Desktop/VSCode
+        ↕ (MCP Protocol)
+  mcp_server.py (Python)
+        ↕ (HTTP REST API)
+  MCPx64dbg.dp32 (C++ Plugin)
+        ↕ (x64dbg SDK)
+      x32dbg.exe
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### Plugin Not Loading
+
+1. Check logs (ALT+L in x32dbg)
+2. Ensure plugin is in correct folder
+3. Try restarting x32dbg
+
+### HTTP Server Not Responding
+
+1. Check port 8888 is not in use: `netstat -ano | findstr 8888`
+2. Check firewall settings
+3. Try changing port in plugin (recompile needed)
+
+### MCP Server Can't Connect
+
+1. Ensure x32dbg is running with plugin loaded
+2. Test manually: `curl http://127.0.0.1:8888/status`
+3. Check X64DBG_URL environment variable
+
+### Build Errors
+
+1. Ensure Visual Studio is installed with C++ support
+2. Ensure CMake is in PATH
+3. Check `deps/pluginsdk` folder exists
+
+---
+
+## 📦 Repository Structure
+
+```
+x64dbgMCP/
+├── build.bat              # One-click build script
+├── mcp_server.py          # Python MCP server
+├── src/
+│   └── MCPx64dbg.cpp      # C++ plugin source (570 lines)
+├── deps/
+│   └── pluginsdk/         # x64dbg SDK headers
+├── build/
+│   └── MCPx64dbg.dp32     # Compiled plugin
+├── CMakeLists.txt         # Build configuration
+└── README.md              # This file
+```
+
+---
+
+## 🎯 Features
+
+✅ **Clean Architecture** - Modern C++ and Python
+✅ **JSON Responses** - Structured data for Claude
+✅ **Error Handling** - Proper error messages
+✅ **MCP Resources** - Contextual information
+✅ **MCP Prompts** - Guided workflows
+✅ **Cross-Process** - No DLL injection needed
+✅ **Safe** - Read-only by default
+✅ **Fast** - Direct API access
+
+---
+
+## 🤝 Contributing
+
+This is a rewrite of the original x64dbgMCP project with significant improvements:
+
+- 63% code reduction in C++ plugin
+- Complete Python rewrite with proper MCP support
+- Added resources and prompts
+- Better error handling
+- Cleaner API design
+
+---
+
+## 📝 License
+
+MIT License - Do whatever you want with this!
+
+---
+
+## 🙏 Credits
+
+- Original idea from [Wasdubya/x64dbgMCP](https://github.com/Wasdubya/x64dbgMCP)
+- Built for the x64dbg debugger
+- Uses Anthropic's Model Context Protocol (MCP)
+
+---
+
+## 🔗 Links
+
+- [x64dbg](https://x64dbg.com/) - The debugger
+- [MCP Documentation](https://modelcontextprotocol.io/) - Protocol docs
+- [Claude Desktop](https://claude.ai/download) - Get Claude
+
+---
+
+**Happy Reversing! 🔍**

@@ -1,9 +1,16 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 
-// Include Windows headers before socket headers
 #include <Windows.h>
-// Include x64dbg SDK
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <string>
+#include <sstream>
+#include <vector>
+#include <mutex>
+#include <unordered_map>
+
+// x64dbg SDK
 #include "pluginsdk/bridgemain.h"
 #include "pluginsdk/_plugins.h"
 #include "pluginsdk/_scriptapi_module.h"
@@ -11,130 +18,108 @@
 #include "pluginsdk/_scriptapi_register.h"
 #include "pluginsdk/_scriptapi_debug.h"
 #include "pluginsdk/_scriptapi_assembler.h"
-#include "pluginsdk/_scriptapi_comment.h"
-#include "pluginsdk/_scriptapi_label.h"
-#include "pluginsdk/_scriptapi_bookmark.h"
-#include "pluginsdk/_scriptapi_function.h"
-#include "pluginsdk/_scriptapi_argument.h"
-#include "pluginsdk/_scriptapi_symbol.h"
 #include "pluginsdk/_scriptapi_stack.h"
 #include "pluginsdk/_scriptapi_pattern.h"
 #include "pluginsdk/_scriptapi_flag.h"
-#include "pluginsdk/_scriptapi_gui.h"
 #include "pluginsdk/_scriptapi_misc.h"
-#include <iomanip>  // For std::setw and std::setfill
 
-// Socket includes - after Windows.h
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
-// Standard library includes
-#include <string>
-#include <vector>
-#include <unordered_map>
-#include <sstream>
-#include <mutex>
-#include <thread>
-#include <algorithm>
-#include <memory>
-#include <fstream>
-
-// Link with ws2_32.lib
 #pragma comment(lib, "ws2_32.lib")
 
-// Link against correct x64dbg library depending on architecture
 #ifdef _WIN64
-#pragma comment(lib, "x64dbg.lib")
+    #pragma comment(lib, "x64dbg.lib")
+    #define ARCH_NAME "x64"
 #else
-#pragma comment(lib, "x32dbg.lib")
+    #pragma comment(lib, "x32dbg.lib")
+    #define ARCH_NAME "x32"
 #endif
 
-// Architecture-aware formatting and register macros
-#ifdef _WIN64
-#define FMT_DUINT_HEX "0x%llx"
-#define FMT_DUINT_DEC "%llu"
-#define DUINT_CAST_PRINTF(v) (unsigned long long)(v)
-#define DUSIZE_CAST_PRINTF(v) (unsigned long long)(v)
-#define REG_IP Script::Register::RIP
-#else
-#define FMT_DUINT_HEX "0x%08X"
-#define FMT_DUINT_DEC "%u"
-#define DUINT_CAST_PRINTF(v) (unsigned int)(v)
-#define DUSIZE_CAST_PRINTF(v) (unsigned int)(v)
-#define REG_IP Script::Register::EIP
-#endif
-
-// Plugin information
-#define PLUGIN_NAME "x64dbg HTTP Server"
-#define PLUGIN_VERSION 1
-
-// Default settings
+// Plugin info
+#define PLUGIN_NAME "x32dbg MCP Server"
+#define PLUGIN_VERSION 2
 #define DEFAULT_PORT 8888
-#define MAX_REQUEST_SIZE 8192
+#define MAX_REQUEST_SIZE 16384
 
-// Global variables
+// Globals
 int g_pluginHandle;
-HANDLE g_httpServerThread = NULL;
-bool g_httpServerRunning = false;
-int g_httpPort = DEFAULT_PORT;
-std::mutex g_httpMutex;
+HANDLE g_serverThread = NULL;
+bool g_running = false;
+int g_port = DEFAULT_PORT;
 SOCKET g_serverSocket = INVALID_SOCKET;
+std::mutex g_mutex;
 
 // Forward declarations
-bool startHttpServer();
-void stopHttpServer();
-DWORD WINAPI HttpServerThread(LPVOID lpParam);
-std::string readHttpRequest(SOCKET clientSocket);
-void sendHttpResponse(SOCKET clientSocket, int statusCode, const std::string& contentType, const std::string& responseBody);
-void parseHttpRequest(const std::string& request, std::string& method, std::string& path, std::string& query, std::string& body);
-std::unordered_map<std::string, std::string> parseQueryParams(const std::string& query);
-std::string urlDecode(const std::string& str);
-
-// Command callback declarations
-bool cbEnableHttpServer(int argc, char* argv[]);
-bool cbSetHttpPort(int argc, char* argv[]);
-void registerCommands();
+DWORD WINAPI ServerThread(LPVOID lpParam);
+void SendResponse(SOCKET client, int code, const std::string& contentType, const std::string& body);
+std::string ParseRegister(const std::string& name, Script::Register::RegisterEnum& reg);
 
 //=============================================================================
-// Plugin Interface Implementation
+// JSON Helper Functions
 //=============================================================================
 
-// Initialize the plugin
+std::string JsonEscape(const std::string& str) {
+    std::string result;
+    for (char c : str) {
+        switch (c) {
+            case '"': result += "\\\""; break;
+            case '\\': result += "\\\\"; break;
+            case '\n': result += "\\n"; break;
+            case '\r': result += "\\r"; break;
+            case '\t': result += "\\t"; break;
+            default: result += c;
+        }
+    }
+    return result;
+}
+
+std::string ToHex(duint value) {
+    std::ostringstream ss;
+    ss << "0x" << std::hex << value;
+    return ss.str();
+}
+
+//=============================================================================
+// Plugin Initialization
+//=============================================================================
+
 bool pluginInit(PLUG_INITSTRUCT* initStruct) {
     initStruct->pluginVersion = PLUGIN_VERSION;
     initStruct->sdkVersion = PLUG_SDKVERSION;
     strncpy_s(initStruct->pluginName, PLUGIN_NAME, _TRUNCATE);
     g_pluginHandle = initStruct->pluginHandle;
-    
-    _plugin_logputs("x64dbg HTTP Server plugin loading...");
-    
-    // Register commands
-    registerCommands();
-    
-    // Start the HTTP server
-    if (startHttpServer()) {
-        _plugin_logprintf("x64dbg HTTP Server started on port %d\n", g_httpPort);
+
+    _plugin_logprintf("[MCP] Plugin loading...\n");
+
+    g_serverThread = CreateThread(NULL, 0, ServerThread, NULL, 0, NULL);
+    if (g_serverThread) {
+        g_running = true;
+        _plugin_logprintf("[MCP] HTTP server started on port %d\n", g_port);
     } else {
-        _plugin_logputs("Failed to start HTTP server!");
+        _plugin_logprintf("[MCP] Failed to start server!\n");
     }
-    
-    _plugin_logputs("x64dbg HTTP Server plugin loaded!");
+
     return true;
 }
 
-// Stop the plugin
 void pluginStop() {
-    _plugin_logputs("Stopping x64dbg HTTP Server...");
-    stopHttpServer();
-    _plugin_logputs("x64dbg HTTP Server stopped.");
+    _plugin_logprintf("[MCP] Stopping plugin...\n");
+    g_running = false;
+
+    if (g_serverSocket != INVALID_SOCKET) {
+        closesocket(g_serverSocket);
+        g_serverSocket = INVALID_SOCKET;
+    }
+
+    if (g_serverThread) {
+        WaitForSingleObject(g_serverThread, 2000);
+        CloseHandle(g_serverThread);
+        g_serverThread = NULL;
+    }
 }
 
-// Plugin setup
 bool pluginSetup() {
     return true;
 }
 
-// Plugin exports
 extern "C" __declspec(dllexport) bool pluginit(PLUG_INITSTRUCT* initStruct) {
     return pluginInit(initStruct);
 }
@@ -148,1401 +133,438 @@ extern "C" __declspec(dllexport) void plugsetup(PLUG_SETUPSTRUCT* setupStruct) {
 }
 
 //=============================================================================
-// HTTP Server Implementation
+// HTTP Server
 //=============================================================================
 
-// Start the HTTP server
-bool startHttpServer() {
-    std::lock_guard<std::mutex> lock(g_httpMutex);
-    
-    // Stop existing server if running
-    if (g_httpServerRunning) {
-        stopHttpServer();
-    }
-    
-    // Create and start the server thread
-    g_httpServerThread = CreateThread(NULL, 0, HttpServerThread, NULL, 0, NULL);
-    if (g_httpServerThread == NULL) {
-        _plugin_logputs("Failed to create HTTP server thread");
-        return false;
-    }
-    
-    g_httpServerRunning = true;
-    return true;
+void SendResponse(SOCKET client, int code, const std::string& contentType, const std::string& body) {
+    std::ostringstream response;
+    std::string statusText = (code == 200) ? "OK" : (code == 400) ? "Bad Request" :
+                            (code == 404) ? "Not Found" : "Internal Server Error";
+
+    response << "HTTP/1.1 " << code << " " << statusText << "\r\n";
+    response << "Content-Type: " << contentType << "\r\n";
+    response << "Content-Length: " << body.length() << "\r\n";
+    response << "Access-Control-Allow-Origin: *\r\n";
+    response << "Connection: close\r\n\r\n";
+    response << body;
+
+    std::string resp = response.str();
+    send(client, resp.c_str(), (int)resp.length(), 0);
 }
 
-// Stop the HTTP server
-void stopHttpServer() {
-    std::lock_guard<std::mutex> lock(g_httpMutex);
-    
-    if (g_httpServerRunning) {
-        g_httpServerRunning = false;
-        
-        // Close the server socket to unblock any accept calls
-        if (g_serverSocket != INVALID_SOCKET) {
-            closesocket(g_serverSocket);
-            g_serverSocket = INVALID_SOCKET;
-        }
-        
-        // Wait for the thread to exit
-        if (g_httpServerThread != NULL) {
-            WaitForSingleObject(g_httpServerThread, 1000);
-            CloseHandle(g_httpServerThread);
-            g_httpServerThread = NULL;
-        }
-    }
-}
-
-// URL decode function
-std::string urlDecode(const std::string& str) {
-    std::string decoded;
+std::string UrlDecode(const std::string& str) {
+    std::string result;
     for (size_t i = 0; i < str.length(); ++i) {
         if (str[i] == '%' && i + 2 < str.length()) {
             int value;
             std::istringstream is(str.substr(i + 1, 2));
             if (is >> std::hex >> value) {
-                decoded += static_cast<char>(value);
+                result += static_cast<char>(value);
                 i += 2;
             } else {
-                decoded += str[i];
+                result += str[i];
             }
         } else if (str[i] == '+') {
-            decoded += ' ';
+            result += ' ';
         } else {
-            decoded += str[i];
+            result += str[i];
         }
     }
-    return decoded;
+    return result;
 }
 
-// HTTP server thread function using standard Winsock
-DWORD WINAPI HttpServerThread(LPVOID lpParam) {
-    WSADATA wsaData;
-    int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (result != 0) {
-        _plugin_logprintf("WSAStartup failed with error: %d\n", result);
-        return 1;
-    }
-    
-    // Create a socket for the server
-    g_serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (g_serverSocket == INVALID_SOCKET) {
-        _plugin_logprintf("Failed to create socket, error: %d\n", WSAGetLastError());
-        WSACleanup();
-        return 1;
-    }
-    
-    // Setup the server address structure
-    sockaddr_in serverAddr;
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // localhost only
-    serverAddr.sin_port = htons((u_short)g_httpPort);
-    
-    // Bind the socket
-    if (bind(g_serverSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
-        _plugin_logprintf("Bind failed with error: %d\n", WSAGetLastError());
-        closesocket(g_serverSocket);
-        WSACleanup();
-        return 1;
-    }
-    
-    // Listen for incoming connections
-    if (listen(g_serverSocket, SOMAXCONN) == SOCKET_ERROR) {
-        _plugin_logprintf("Listen failed with error: %d\n", WSAGetLastError());
-        closesocket(g_serverSocket);
-        WSACleanup();
-        return 1;
-    }
-    
-    _plugin_logprintf("HTTP server started at http://localhost:%d/\n", g_httpPort);
-    
-    // Set socket to non-blocking mode
-    u_long mode = 1;
-    ioctlsocket(g_serverSocket, FIONBIO, &mode);
-    
-    // Main server loop
-    while (g_httpServerRunning) {
-        // Accept a client connection
-        sockaddr_in clientAddr;
-        int clientAddrSize = sizeof(clientAddr);
-        SOCKET clientSocket = accept(g_serverSocket, (sockaddr*)&clientAddr, &clientAddrSize);
-        
-        if (clientSocket == INVALID_SOCKET) {
-            // Check if we need to exit
-            if (!g_httpServerRunning) {
-                break;
-            }
-            
-            // Non-blocking socket may return WOULD_BLOCK when no connections are pending
-            if (WSAGetLastError() != WSAEWOULDBLOCK) {
-                _plugin_logprintf("Accept failed with error: %d\n", WSAGetLastError());
-            }
-            
-            Sleep(100); // Avoid tight loop
-            continue;
-        }
-        
-        // Read the HTTP request
-        std::string requestData = readHttpRequest(clientSocket);
-        
-        if (!requestData.empty()) {
-            // Parse the HTTP request
-            std::string method, path, query, body;
-            parseHttpRequest(requestData, method, path, query, body);
-            
-            _plugin_logprintf("HTTP Request: %s %s\n", method.c_str(), path.c_str());
-            
-            // Parse query parameters
-            std::unordered_map<std::string, std::string> queryParams = parseQueryParams(query);
-            
-            // Handle different endpoints
-            try {
-                // Unified command execution endpoint
-                if (path == "/ExecCommand") {
-                    std::string cmd = queryParams["cmd"];
-                    if (cmd.empty() && !body.empty()) {
-                        cmd = body;
-                    }
-                    
-                    if (cmd.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing command parameter");
-                        continue;
-                    }
-                    
-                    // Generate unique temporary log file
-                    char tempPath[MAX_PATH];
-                    GetTempPathA(MAX_PATH, tempPath);
-                    std::string logFile = std::string(tempPath) + "x64dbg_cmd_" + std::to_string(GetTickCount()) + ".log";
-                    
-                    // Start log redirection
-                    std::string redirectCmd = "LogRedirect \"" + logFile + "\"";
-                    DbgCmdExecDirect(redirectCmd.c_str());
-                    
-                    // Small delay to ensure redirection is active
-                    Sleep(50);
-                    
-                    // Clear any existing content in the log
-                    DbgCmdExecDirect("LogClear");
-                    
-                    // Small delay after clearing
-                    Sleep(50);
-                    
-                    // Execute the actual command
-                    bool success = DbgCmdExecDirect(cmd.c_str());
-                    
-                    // Wait for command to complete and output to be written
-                    Sleep(200);
-                    
-                    // Stop log redirection
-                    DbgCmdExecDirect("LogRedirectStop");
-                    
-                    // Wait a bit more for file operations to complete
-                    Sleep(100);
-                    
-                    // Read the captured output with retry mechanism
-                    std::string output;
-                    int retryCount = 0;
-                    const int maxRetries = 5;
-                    
-                    while (retryCount < maxRetries) {
-                        std::ifstream file(logFile, std::ios::binary);
-                        if (file.is_open()) {
-                            // Get file size
-                            file.seekg(0, std::ios::end);
-                            std::streamsize fileSize = file.tellg();
-                            file.seekg(0, std::ios::beg);
-                            
-                            if (fileSize > 0) {
-                                // Read the entire file
-                                std::stringstream buffer;
-                                buffer << file.rdbuf();
-                                output = buffer.str();
-                                file.close();
-                                break;
-                            } else {
-                                file.close();
-                                // File exists but is empty, wait and retry
-                                Sleep(100);
-                                retryCount++;
-                            }
-                        } else {
-                            // File doesn't exist yet, wait and retry
-                            Sleep(100);
-                            retryCount++;
-                        }
-                    }
-                    
-                    // Clean up temporary file
-                    DeleteFileA(logFile.c_str());
-                    
-                    // Process the captured output
-                    if (!output.empty()) {
-                        // Filter out log redirection messages
-                        size_t pos = 0;
-                        while ((pos = output.find("Log will be redirected to", pos)) != std::string::npos) {
-                            size_t endPos = output.find('\n', pos);
-                            if (endPos != std::string::npos) {
-                                output.erase(pos, endPos - pos + 1);
-                            } else {
-                                output.erase(pos);
-                                break;
-                            }
-                        }
-                        
-                        // Remove "Log redirection stopped" messages
-                        pos = 0;
-                        while ((pos = output.find("Log redirection stopped", pos)) != std::string::npos) {
-                            size_t endPos = output.find('\n', pos);
-                            if (endPos != std::string::npos) {
-                                output.erase(pos, endPos - pos + 1);
-                            } else {
-                                output.erase(pos);
-                                break;
-                            }
-                        }
-                        
-                        // Remove "Log cleared" messages
-                        pos = 0;
-                        while ((pos = output.find("Log cleared", pos)) != std::string::npos) {
-                            size_t endPos = output.find('\n', pos);
-                            if (endPos != std::string::npos) {
-                                output.erase(pos, endPos - pos + 1);
-                            } else {
-                                output.erase(pos);
-                                break;
-                            }
-                        }
-                        
-                        // Trim whitespace and empty lines
-                        output.erase(0, output.find_first_not_of(" \t\n\r"));
-                        output.erase(output.find_last_not_of(" \t\n\r") + 1);
-                    }
-                    
-                    // Prepare response
-                    std::string response;
-                    if (success) {
-                        if (!output.empty()) {
-                            response = output;
-                        } else {
-                            response = "Command executed successfully (no output captured)";
-                        }
-                    } else {
-                        if (!output.empty()) {
-                            response = "Command failed:\n" + output;
-                        } else {
-                            response = "Command execution failed";
-                        }
-                    }
-                    
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", response);
-                }
-                else if (path == "/IsDebugActive") {
-                    bool isRunning = DbgIsRunning();
-                    _plugin_logprintf("DbgIsRunning() called, result: %s\n", isRunning ? "true" : "false");
-                    std::stringstream ss;
-                    ss << "{\"isRunning\":" << (isRunning ? "true" : "false") << "}";
-                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
-                }
-                else if (path == "/Is_Debugging") {
-                    bool isDebugging = DbgIsDebugging();
-                    _plugin_logprintf("DbgIsDebugging() called, result: %s\n", isDebugging ? "true" : "false");
-                    std::stringstream ss;
-                    ss << "{\"isDebugging\":" << (isDebugging ? "true" : "false") << "}";
-                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
-                }
-                // =============================================================================
-                // REGISTER API ENDPOINTS
-                // =============================================================================
-                else if (path == "/Register/Get") {
-                    std::string regName = queryParams["register"];
-                    if (regName.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing register parameter");
-                        continue;
-                    }
-                    
-                    // Convert register name to enum (simplified mapping)
-                    Script::Register::RegisterEnum reg;
-                    if (regName == "EAX" || regName == "eax") reg = Script::Register::EAX;
-                    else if (regName == "EBX" || regName == "ebx") reg = Script::Register::EBX;
-                    else if (regName == "ECX" || regName == "ecx") reg = Script::Register::ECX;
-                    else if (regName == "EDX" || regName == "edx") reg = Script::Register::EDX;
-                    else if (regName == "ESI" || regName == "esi") reg = Script::Register::ESI;
-                    else if (regName == "EDI" || regName == "edi") reg = Script::Register::EDI;
-                    else if (regName == "EBP" || regName == "ebp") reg = Script::Register::EBP;
-                    else if (regName == "ESP" || regName == "esp") reg = Script::Register::ESP;
-                    else if (regName == "EIP" || regName == "eip") reg = Script::Register::EIP;
-#ifdef _WIN64
-                    else if (regName == "RAX" || regName == "rax") reg = Script::Register::RAX;
-                    else if (regName == "RBX" || regName == "rbx") reg = Script::Register::RBX;
-                    else if (regName == "RCX" || regName == "rcx") reg = Script::Register::RCX;
-                    else if (regName == "RDX" || regName == "rdx") reg = Script::Register::RDX;
-                    else if (regName == "RSI" || regName == "rsi") reg = Script::Register::RSI;
-                    else if (regName == "RDI" || regName == "rdi") reg = Script::Register::RDI;
-                    else if (regName == "RBP" || regName == "rbp") reg = Script::Register::RBP;
-                    else if (regName == "RSP" || regName == "rsp") reg = Script::Register::RSP;
-                    else if (regName == "RIP" || regName == "rip") {
-#ifdef _WIN64
-                        reg = Script::Register::RIP;
-#else
-                        // On x86, map RIP queries to EIP for compatibility
-                        reg = Script::Register::EIP;
-#endif
-                    }
-                    else if (regName == "R8" || regName == "r8") reg = Script::Register::R8;
-                    else if (regName == "R9" || regName == "r9") reg = Script::Register::R9;
-                    else if (regName == "R10" || regName == "r10") reg = Script::Register::R10;
-                    else if (regName == "R11" || regName == "r11") reg = Script::Register::R11;
-                    else if (regName == "R12" || regName == "r12") reg = Script::Register::R12;
-                    else if (regName == "R13" || regName == "r13") reg = Script::Register::R13;
-                    else if (regName == "R14" || regName == "r14") reg = Script::Register::R14;
-                    else if (regName == "R15" || regName == "r15") reg = Script::Register::R15;
-#endif
-                    else {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Unknown register");
-                        continue;
-                    }
-                    
-                    duint value = Script::Register::Get(reg);
-                    std::stringstream ss;
-                    ss << "0x" << std::hex << value;
-                    sendHttpResponse(clientSocket, 200, "text/plain", ss.str());
-                }
-                else if (path == "/Register/Set") {
-                    std::string regName = queryParams["register"];
-                    std::string valueStr = queryParams["value"];
-                    if (regName.empty() || valueStr.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing register or value parameter");
-                        continue;
-                    }
-                    
-                    // Convert register name to enum (same mapping as above)
-                    Script::Register::RegisterEnum reg;
-                    if (regName == "EAX" || regName == "eax") reg = Script::Register::EAX;
-                    else if (regName == "EBX" || regName == "ebx") reg = Script::Register::EBX;
-                    else if (regName == "ECX" || regName == "ecx") reg = Script::Register::ECX;
-                    else if (regName == "EDX" || regName == "edx") reg = Script::Register::EDX;
-                    else if (regName == "ESI" || regName == "esi") reg = Script::Register::ESI;
-                    else if (regName == "EDI" || regName == "edi") reg = Script::Register::EDI;
-                    else if (regName == "EBP" || regName == "ebp") reg = Script::Register::EBP;
-                    else if (regName == "ESP" || regName == "esp") reg = Script::Register::ESP;
-                    else if (regName == "EIP" || regName == "eip") reg = Script::Register::EIP;
-#ifdef _WIN64
-                    else if (regName == "RAX" || regName == "rax") reg = Script::Register::RAX;
-                    else if (regName == "RBX" || regName == "rbx") reg = Script::Register::RBX;
-                    else if (regName == "RCX" || regName == "rcx") reg = Script::Register::RCX;
-                    else if (regName == "RDX" || regName == "rdx") reg = Script::Register::RDX;
-                    else if (regName == "RSI" || regName == "rsi") reg = Script::Register::RSI;
-                    else if (regName == "RDI" || regName == "rdi") reg = Script::Register::RDI;
-                    else if (regName == "RBP" || regName == "rbp") reg = Script::Register::RBP;
-                    else if (regName == "RSP" || regName == "rsp") reg = Script::Register::RSP;
-                    else if (regName == "RIP" || regName == "rip") {
-#ifdef _WIN64
-                        reg = Script::Register::RIP;
-#else
-                        reg = Script::Register::EIP;
-#endif
-                    }
-                    else if (regName == "R8" || regName == "r8") reg = Script::Register::R8;
-                    else if (regName == "R9" || regName == "r9") reg = Script::Register::R9;
-                    else if (regName == "R10" || regName == "r10") reg = Script::Register::R10;
-                    else if (regName == "R11" || regName == "r11") reg = Script::Register::R11;
-                    else if (regName == "R12" || regName == "r12") reg = Script::Register::R12;
-                    else if (regName == "R13" || regName == "r13") reg = Script::Register::R13;
-                    else if (regName == "R14" || regName == "r14") reg = Script::Register::R14;
-                    else if (regName == "R15" || regName == "r15") reg = Script::Register::R15;
-#endif
-                    else {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Unknown register");
-                        continue;
-                    }
-                    
-                    duint value = 0;
-                    try {
-                        if (valueStr.substr(0, 2) == "0x") {
-                            value = std::stoull(valueStr.substr(2), nullptr, 16);
-                        } else {
-                            value = std::stoull(valueStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid value format");
-                        continue;
-                    }
-                    
-                    bool success = Script::Register::Set(reg, value);
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
-                        success ? "Register set successfully" : "Failed to set register");
-                }
-                
-                // =============================================================================
-                // MEMORY API ENDPOINTS (Enhanced)
-                // =============================================================================
-                else if (path == "/Memory/Read") {
-                    std::string addrStr = queryParams["addr"];
-                    std::string sizeStr = queryParams["size"];
-                    
-                    if (addrStr.empty() || sizeStr.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing address or size");
-                        continue;
-                    }
-                    
-                    duint addr = 0;
-                    duint size = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                        size = std::stoull(sizeStr, nullptr, 10);
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address or size format");
-                        continue;
-                    }
-                    
-                    if (size > 1024 * 1024) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Size too large");
-                        continue;
-                    }
-                    
-                    std::vector<unsigned char> buffer(size);
-                    duint sizeRead = 0;
-                    
-                    if (!Script::Memory::Read(addr, buffer.data(), size, &sizeRead)) {
-                        sendHttpResponse(clientSocket, 500, "text/plain", "Failed to read memory");
-                        continue;
-                    }
-                    
-                    std::stringstream ss;
-                    for (duint i = 0; i < sizeRead; i++) {
-                        ss << std::setw(2) << std::setfill('0') << std::hex << (int)buffer[i];
-                    }
-                    
-                    sendHttpResponse(clientSocket, 200, "text/plain", ss.str());
-                }
-                else if (path == "/Memory/Write") {
-                    std::string addrStr = queryParams["addr"];
-                    std::string dataStr = !body.empty() ? body : queryParams["data"];
-                    
-                    if (addrStr.empty() || dataStr.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing address or data");
-                        continue;
-                    }
-                    
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
-                        continue;
-                    }
-                    
-                    std::vector<unsigned char> buffer;
-                    for (size_t i = 0; i < dataStr.length(); i += 2) {
-                        if (i + 1 >= dataStr.length()) break;
-                        std::string byteString = dataStr.substr(i, 2);
-                        try {
-                            unsigned char byte = (unsigned char)std::stoi(byteString, nullptr, 16);
-                            buffer.push_back(byte);
-                        } catch (const std::exception& e) {
-                            sendHttpResponse(clientSocket, 400, "text/plain", "Invalid data format");
-                            continue;
-                        }
-                    }
-                    
-                    duint sizeWritten = 0;
-                    bool success = Script::Memory::Write(addr, buffer.data(), buffer.size(), &sizeWritten);
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
-                        success ? "Memory written successfully" : "Failed to write memory");
-                }
-                else if (path == "/Memory/IsValidPtr") {
-                    std::string addrStr = queryParams["addr"];
-                    if (addrStr.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing address parameter");
-                        continue;
-                    }
-                    
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
-                        continue;
-                    }
-                    
-                    bool isValid = Script::Memory::IsValidPtr(addr);
-                    sendHttpResponse(clientSocket, 200, "text/plain", isValid ? "true" : "false");
-                }
-                else if (path == "/Memory/GetProtect") {
-                    std::string addrStr = queryParams["addr"];
-                    if (addrStr.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing address parameter");
-                        continue;
-                    }
-                    
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
-                        continue;
-                    }
-                    
-                    unsigned int protect = Script::Memory::GetProtect(addr);
-                    std::stringstream ss;
-                    ss << "0x" << std::hex << protect;
-                    sendHttpResponse(clientSocket, 200, "text/plain", ss.str());
-                }
-                
-                // =============================================================================
-                // DEBUG API ENDPOINTS
-                // =============================================================================
-                else if (path == "/Debug/Run") {
-                    Script::Debug::Run();
-                    sendHttpResponse(clientSocket, 200, "text/plain", "Debug run executed");
-                }
-                else if (path == "/Debug/Pause") {
-                    Script::Debug::Pause();
-                    sendHttpResponse(clientSocket, 200, "text/plain", "Debug pause executed");
-                }
-                else if (path == "/Debug/Stop") {
-                    Script::Debug::Stop();
-                    sendHttpResponse(clientSocket, 200, "text/plain", "Debug stop executed");
-                }
-                else if (path == "/Debug/StepIn") {
-                    Script::Debug::StepIn();
-                    sendHttpResponse(clientSocket, 200, "text/plain", "Step in executed");
-                }
-                else if (path == "/Debug/StepOver") {
-                    Script::Debug::StepOver();
-                    sendHttpResponse(clientSocket, 200, "text/plain", "Step over executed");
-                }
-                else if (path == "/Debug/StepOut") {
-                    Script::Debug::StepOut();
-                    sendHttpResponse(clientSocket, 200, "text/plain", "Step out executed");
-                }
-                else if (path == "/Debug/SetBreakpoint") {
-                    std::string addrStr = queryParams["addr"];
-                    if (addrStr.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing address parameter");
-                        continue;
-                    }
-                    
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
-                        continue;
-                    }
-                    
-                    bool success = Script::Debug::SetBreakpoint(addr);
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
-                        success ? "Breakpoint set successfully" : "Failed to set breakpoint");
-                }
-                else if (path == "/Debug/DeleteBreakpoint") {
-                    std::string addrStr = queryParams["addr"];
-                    if (addrStr.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing address parameter");
-                        continue;
-                    }
-                    
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
-                        continue;
-                    }
-                    
-                    bool success = Script::Debug::DeleteBreakpoint(addr);
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
-                        success ? "Breakpoint deleted successfully" : "Failed to delete breakpoint");
-                }
-                
-                // =============================================================================
-                // ASSEMBLER API ENDPOINTS
-                // =============================================================================
-                else if (path == "/Assembler/Assemble") {
-                    std::string addrStr = queryParams["addr"];
-                    std::string instruction = queryParams["instruction"];
-                    if (instruction.empty() && !body.empty()) {
-                        instruction = body;
-                    }
-                    
-                    if (addrStr.empty() || instruction.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing address or instruction parameter");
-                        continue;
-                    }
-                    
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
-                        continue;
-                    }
-                    
-                    unsigned char dest[16];
-                    int size = 16;
-                    bool success = Script::Assembler::Assemble(addr, dest, &size, instruction.c_str());
-                    
-                    if (success) {
-                        std::stringstream ss;
-                        ss << "{\"success\":true,\"size\":" << size << ",\"bytes\":\"";
-                        for (int i = 0; i < size; i++) {
-                            ss << std::setw(2) << std::setfill('0') << std::hex << (int)dest[i];
-                        }
-                        ss << "\"}";
-                        sendHttpResponse(clientSocket, 200, "application/json", ss.str());
-                    } else {
-                        sendHttpResponse(clientSocket, 500, "text/plain", "Failed to assemble instruction");
-                    }
-                }
-                else if (path == "/Assembler/AssembleMem") {
-                    std::string addrStr = queryParams["addr"];
-                    std::string instruction = queryParams["instruction"];
-                    if (instruction.empty() && !body.empty()) {
-                        instruction = body;
-                    }
-                    
-                    if (addrStr.empty() || instruction.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing address or instruction parameter");
-                        continue;
-                    }
-                    
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
-                        continue;
-                    }
-                    
-                    bool success = Script::Assembler::AssembleMem(addr, instruction.c_str());
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
-                        success ? "Instruction assembled in memory successfully" : "Failed to assemble instruction in memory");
-                }
-                
-                // =============================================================================
-                // STACK API ENDPOINTS
-                // =============================================================================
-                else if (path == "/Stack/Pop") {
-                    duint value = Script::Stack::Pop();
-                    std::stringstream ss;
-                    ss << "0x" << std::hex << value;
-                    sendHttpResponse(clientSocket, 200, "text/plain", ss.str());
-                }
-                else if (path == "/Stack/Push") {
-                    std::string valueStr = queryParams["value"];
-                    if (valueStr.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing value parameter");
-                        continue;
-                    }
-                    
-                    duint value = 0;
-                    try {
-                        if (valueStr.substr(0, 2) == "0x") {
-                            value = std::stoull(valueStr.substr(2), nullptr, 16);
-                        } else {
-                            value = std::stoull(valueStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid value format");
-                        continue;
-                    }
-                    
-                    duint prevTop = Script::Stack::Push(value);
-                    std::stringstream ss;
-                    ss << "0x" << std::hex << prevTop;
-                    sendHttpResponse(clientSocket, 200, "text/plain", ss.str());
-                }
-                else if (path == "/Stack/Peek") {
-                    std::string offsetStr = queryParams["offset"];
-                    int offset = 0;
-                    if (!offsetStr.empty()) {
-                        try {
-                            offset = std::stoi(offsetStr);
-                        } catch (const std::exception& e) {
-                            sendHttpResponse(clientSocket, 400, "text/plain", "Invalid offset format");
-                            continue;
-                        }
-                    }
-                    
-                    duint value = Script::Stack::Peek(offset);
-                    std::stringstream ss;
-                    ss << "0x" << std::hex << value;
-                    sendHttpResponse(clientSocket, 200, "text/plain", ss.str());
-                }
-                else if (path == "/Disasm/GetInstruction") {
-                    std::string addrStr = queryParams["addr"];
-                    if (addrStr.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing address parameter");
-                        continue;
-                    }
-                    
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
-                        continue;
-                    }
-                    
-                    // Use the correct DISASM_INSTR structure
-                    DISASM_INSTR instr;
-                    DbgDisasmAt(addr, &instr);
-                    
-                    // Create JSON response with available instruction details
-                    std::stringstream ss;
-                    ss << "{";
-                    ss << "\"address\":\"0x" << std::hex << addr << "\",";
-                    ss << "\"instruction\":\"" << instr.instruction << "\",";
-                    ss << "\"size\":" << std::dec << instr.instr_size;
-                    ss << "}";
-                    
-                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
-                }
-                else if (path == "/Disasm/GetInstructionRange") {
-                    std::string addrStr = queryParams["addr"];
-                    std::string countStr = queryParams["count"];
-                    
-                    if (addrStr.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing address parameter");
-                        continue;
-                    }
-                    
-                    duint addr = 0;
-                    int count = 1;
-                    
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                        
-                        if (!countStr.empty()) {
-                            count = std::stoi(countStr);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address or count format");
-                        continue;
-                    }
-                    
-                    if (count <= 0 || count > 100) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Count must be between 1 and 100");
-                        continue;
-                    }
-                    
-                    // Get multiple instructions
-                    std::stringstream ss;
-                    ss << "[";
-                    
-                    duint currentAddr = addr;
-                    for (int i = 0; i < count; i++) {
-                        DISASM_INSTR instr;
-                        DbgDisasmAt(currentAddr, &instr);
-                        
-                        if (instr.instr_size > 0) {
-                            if (i > 0) ss << ",";
-                            
-                            ss << "{";
-                            ss << "\"address\":\"0x" << std::hex << currentAddr << "\",";
-                            ss << "\"instruction\":\"" << instr.instruction << "\",";
-                            ss << "\"size\":" << std::dec << instr.instr_size;
-                            ss << "}";
-                            
-                            currentAddr += instr.instr_size;
-                        } else {
-                            break;
-                        }
-                    }
-                    
-                    ss << "]";
-                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
-                }
-                else if (path == "/Disasm/GetInstructionAtRIP") {
-                    // Get current IP (RIP/EIP) and disassemble
-                    duint rip = Script::Register::Get(REG_IP);
-                    
-                    DISASM_INSTR instr;
-                    DbgDisasmAt(rip, &instr);
-                    
-                    // Create JSON response
-                    std::stringstream ss;
-                    ss << "{";
-                    ss << "\"rip\":\"0x" << std::hex << rip << "\",";
-                    ss << "\"instruction\":\"" << instr.instruction << "\",";
-                    ss << "\"size\":" << std::dec << instr.instr_size;
-                    ss << "}";
-                    
-                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
-                }
-                else if (path == "/Disasm/StepInWithDisasm") {
-                    // Step in first
-                    Script::Debug::StepIn();
-                    
-                    // Then get current instruction
-                    duint rip = Script::Register::Get(REG_IP);
-                    
-                    DISASM_INSTR instr;
-                    DbgDisasmAt(rip, &instr);
-                    
-                    // Create JSON response
-                    std::stringstream ss;
-                    ss << "{";
-                    ss << "\"step_result\":\"Step in executed\",";
-                    ss << "\"rip\":\"0x" << std::hex << rip << "\",";
-                    ss << "\"instruction\":\"" << instr.instruction << "\",";
-                    ss << "\"size\":" << std::dec << instr.instr_size;
-                    ss << "}";
-                    
-                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
-                }
-                // =============================================================================
-                // FLAG API ENDPOINTS
-                // =============================================================================
-                else if (path == "/Flag/Get") {
-                    std::string flagName = queryParams["flag"];
-                    if (flagName.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing flag parameter");
-                        continue;
-                    }
-                    
-                    bool value = false;
-                    if (flagName == "ZF" || flagName == "zf") value = Script::Flag::GetZF();
-                    else if (flagName == "OF" || flagName == "of") value = Script::Flag::GetOF();
-                    else if (flagName == "CF" || flagName == "cf") value = Script::Flag::GetCF();
-                    else if (flagName == "PF" || flagName == "pf") value = Script::Flag::GetPF();
-                    else if (flagName == "SF" || flagName == "sf") value = Script::Flag::GetSF();
-                    else if (flagName == "TF" || flagName == "tf") value = Script::Flag::GetTF();
-                    else if (flagName == "AF" || flagName == "af") value = Script::Flag::GetAF();
-                    else if (flagName == "DF" || flagName == "df") value = Script::Flag::GetDF();
-                    else if (flagName == "IF" || flagName == "if") value = Script::Flag::GetIF();
-                    else {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Unknown flag");
-                        continue;
-                    }
-                    
-                    sendHttpResponse(clientSocket, 200, "text/plain", value ? "true" : "false");
-                }
-                else if (path == "/Flag/Set") {
-                    std::string flagName = queryParams["flag"];
-                    std::string valueStr = queryParams["value"];
-                    if (flagName.empty() || valueStr.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing flag or value parameter");
-                        continue;
-                    }
-                    
-                    bool value = (valueStr == "true" || valueStr == "1");
-                    bool success = false;
-                    
-                    if (flagName == "ZF" || flagName == "zf") success = Script::Flag::SetZF(value);
-                    else if (flagName == "OF" || flagName == "of") success = Script::Flag::SetOF(value);
-                    else if (flagName == "CF" || flagName == "cf") success = Script::Flag::SetCF(value);
-                    else if (flagName == "PF" || flagName == "pf") success = Script::Flag::SetPF(value);
-                    else if (flagName == "SF" || flagName == "sf") success = Script::Flag::SetSF(value);
-                    else if (flagName == "TF" || flagName == "tf") success = Script::Flag::SetTF(value);
-                    else if (flagName == "AF" || flagName == "af") success = Script::Flag::SetAF(value);
-                    else if (flagName == "DF" || flagName == "df") success = Script::Flag::SetDF(value);
-                    else if (flagName == "IF" || flagName == "if") success = Script::Flag::SetIF(value);
-                    else {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Unknown flag");
-                        continue;
-                    }
-                    
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
-                        success ? "Flag set successfully" : "Failed to set flag");
-                }
-                
-                // =============================================================================
-                // PATTERN API ENDPOINTS
-                // =============================================================================
-                else if (path == "/Pattern/FindMem") {
-                    std::string startStr = queryParams["start"];
-                    std::string sizeStr = queryParams["size"];
-                    std::string pattern = queryParams["pattern"];
-                    
-                    if (startStr.empty() || sizeStr.empty() || pattern.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing start, size, or pattern parameter");
-                        continue;
-                    }
-                    
-                    duint start = 0, size = 0;
-                    try {
-                        if (startStr.substr(0, 2) == "0x") {
-                            start = std::stoull(startStr.substr(2), nullptr, 16);
-                        } else {
-                            start = std::stoull(startStr, nullptr, 16);
-                        }
-                        size = std::stoull(sizeStr, nullptr, 10);
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid start or size format");
-                        continue;
-                    }
-                    
-                    duint result = Script::Pattern::FindMem(start, size, pattern.c_str());
-                    if (result != 0) {
-                        std::stringstream ss;
-                        ss << "0x" << std::hex << result;
-                        sendHttpResponse(clientSocket, 200, "text/plain", ss.str());
-                    } else {
-                        sendHttpResponse(clientSocket, 404, "text/plain", "Pattern not found");
-                    }
-                }
-                
-                // =============================================================================
-                // MISC API ENDPOINTS
-                // =============================================================================
-                else if (path == "/Misc/ParseExpression") {
-                    std::string expression = queryParams["expression"];
-                    if (expression.empty() && !body.empty()) {
-                        expression = body;
-                    }
-                    
-                    if (expression.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing expression parameter");
-                        continue;
-                    }
-                    
-                    duint value = 0;
-                    bool success = Script::Misc::ParseExpression(expression.c_str(), &value);
-                    
-                    if (success) {
-                        std::stringstream ss;
-                        ss << "0x" << std::hex << value;
-                        sendHttpResponse(clientSocket, 200, "text/plain", ss.str());
-                    } else {
-                        sendHttpResponse(clientSocket, 500, "text/plain", "Failed to parse expression");
-                    }
-                }
-                else if (path == "/Misc/RemoteGetProcAddress") {
-                    std::string module = queryParams["module"];
-                    std::string api = queryParams["api"];
-                    
-                    if (module.empty() || api.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing module or api parameter");
-                        continue;
-                    }
-                    
-                    duint addr = Script::Misc::RemoteGetProcAddress(module.c_str(), api.c_str());
-                    if (addr != 0) {
-                        std::stringstream ss;
-                        ss << "0x" << std::hex << addr;
-                        sendHttpResponse(clientSocket, 200, "text/plain", ss.str());
-                    } else {
-                        sendHttpResponse(clientSocket, 404, "text/plain", "Function not found");
-                    }
-                }
-                
-                // =============================================================================
-                // EXISTING ENDPOINTS (Keep compatibility)
-                // =============================================================================
-                else if (path == "/MemoryBase") {
-                    std::string addrStr = queryParams["addr"];
-                    if (addrStr.empty() && !body.empty()) {
-                        addrStr = body;
-                    }
-                    _plugin_logprintf("MemoryBase endpoint called with addr: %s\n", addrStr.c_str());
-                    // Convert string address to duint
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16); // Parse as hex
-                    }
-                    catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
-                        continue;
-                    }
-                    _plugin_logprintf("Converted address: " FMT_DUINT_HEX "\n", DUINT_CAST_PRINTF(addr));
-                    
-                    // Get the base address and size
-                    duint size = 0;
-                    duint baseAddr = DbgMemFindBaseAddr(addr, &size);
-                    _plugin_logprintf("Base address found: " FMT_DUINT_HEX ", size: " FMT_DUINT_DEC "\n", DUINT_CAST_PRINTF(baseAddr), DUSIZE_CAST_PRINTF(size));
-                    if (baseAddr == 0) {
-                        sendHttpResponse(clientSocket, 404, "text/plain", "No module found for this address");
-                    }
-                    else {
-                        // Format the response as JSON
-                        std::stringstream ss;
-                        ss << "{\"base_address\":\"0x" << std::hex << baseAddr << "\",\"size\":\"0x" << std::hex << size << "\"}";
-                        sendHttpResponse(clientSocket, 200, "application/json", ss.str());
-                    }
-                }
-                else if (path == "/GetModuleList") {
-                    // Create a list to store the module information
-                    ListInfo moduleList;
-                    
-                    // Get the list of modules
-                    bool success = Script::Module::GetList(&moduleList);
-                    
-                    if (!success) {
-                        sendHttpResponse(clientSocket, 500, "text/plain", "Failed to get module list");
-                    }
-                    else {
-                        // Create a JSON array to hold the module information
-                        std::stringstream jsonResponse;
-                        jsonResponse << "[";
-                        
-                        // Iterate through each module in the list
-                        size_t count = moduleList.count;
-                        Script::Module::ModuleInfo* modules = (Script::Module::ModuleInfo*)moduleList.data;
-                        
-                        for (size_t i = 0; i < count; i++) {
-                            if (i > 0) jsonResponse << ",";
-                            
-                            // Add module info as JSON object
-                            jsonResponse << "{";
-                            jsonResponse << "\"name\":\"" << modules[i].name << "\",";
-                            jsonResponse << "\"base\":\"0x" << std::hex << modules[i].base << "\",";
-                            jsonResponse << "\"size\":\"0x" << std::hex << modules[i].size << "\",";
-                            jsonResponse << "\"entry\":\"0x" << std::hex << modules[i].entry << "\",";
-                            jsonResponse << "\"sectionCount\":" << std::dec << modules[i].sectionCount << ",";
-                            jsonResponse << "\"path\":\"" << modules[i].path << "\"";
-                            jsonResponse << "}";
-                        }
-                        
-                        jsonResponse << "]";
-                        
-                        // Free the list
-                        BridgeFree(moduleList.data);
-                        
-                        // Send the response
-                        sendHttpResponse(clientSocket, 200, "application/json", jsonResponse.str());
-                    }
-                }
-                // Memory Access Functions (Legacy endpoints for compatibility)
-                else if (path == "/MemRead") {
-                    std::string addrStr = queryParams["addr"];
-                    std::string sizeStr = queryParams["size"];
-                    
-                    // URL decode parameters
-                    addrStr = urlDecode(addrStr);
-                    sizeStr = urlDecode(sizeStr);
-                    
-                    // Remove any quotes or extra characters
-                    addrStr.erase(std::remove_if(addrStr.begin(), addrStr.end(), 
-                                  [](char c) { return c == '"' || c == '\\'; }), addrStr.end());
-                    sizeStr.erase(std::remove_if(sizeStr.begin(), sizeStr.end(), 
-                                  [](char c) { return c == '"' || c == '\\'; }), sizeStr.end());
-                    
-                    if (addrStr.empty() || sizeStr.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing address or size");
-                        closesocket(clientSocket);
-                        continue;
-                    }
-                    
-                    duint addr = 0;
-                    duint size = 0;
-                    
-                    try {
-                        // Remove "0x" prefix if present
-                        if (addrStr.size() >= 2 && addrStr.substr(0, 2) == "0x") {
-                            addrStr = addrStr.substr(2);
-                        }
-                        
-                        addr = std::stoull(addrStr, nullptr, 16); // Parse address as hex
-                        size = std::stoull(sizeStr, nullptr, 10); // Parse size as decimal
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address or size format");
-                        closesocket(clientSocket);
-                        continue;
-                    }
-                    
-                    // Sanity check for size to prevent large allocations
-                    if (size > 1024 * 1024) { // Limit to 1MB for safety
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Size too large");
-                        closesocket(clientSocket);
-                        continue;
-                    }
-                    
-                    std::vector<unsigned char> buffer(size);
-                    
-                    if (!DbgMemRead(addr, buffer.data(), size)) {
-                        sendHttpResponse(clientSocket, 500, "text/plain", "Failed to read memory");
-                        closesocket(clientSocket);
-                        continue;
-                    }
-                    
-                    // Convert to hex string
-                    std::stringstream ss;
-                    for (size_t i = 0; i < size; i++) {
-                        ss << std::setw(2) << std::setfill('0') << std::hex << (int)buffer[i];
-                    }
-                    
-                    sendHttpResponse(clientSocket, 200, "text/plain", ss.str());
-                }
-                else if (path == "/MemWrite") {
-                    std::string addrStr = queryParams["addr"];
-                    std::string dataStr = !body.empty() ? body : queryParams["data"];
-                    
-                    if (addrStr.empty() || dataStr.empty()) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing address or data");
-                        continue;
-                    }
-                    
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16); // Parse as hex
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
-                        continue;
-                    }
-                    
-                    // Convert hex string to bytes
-                    std::vector<unsigned char> buffer;
-                    for (size_t i = 0; i < dataStr.length(); i += 2) {
-                        if (i + 1 >= dataStr.length()) break;
-                        std::string byteString = dataStr.substr(i, 2);
-                        try {
-                            unsigned char byte = (unsigned char)std::stoi(byteString, nullptr, 16);
-                            buffer.push_back(byte);
-                        } catch (const std::exception& e) {
-                            sendHttpResponse(clientSocket, 400, "text/plain", "Invalid data format");
-                            continue;
-                        }
-                    }
-                    
-                    // Write memory
-                    bool success = DbgMemWrite(addr, buffer.data(), buffer.size());
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
-                        success ? "Memory written successfully" : "Failed to write memory");
-                }
-                else {
-                    // Unknown URL
-                    sendHttpResponse(clientSocket, 404, "text/plain", "Not Found");
-                }
-            }
-            catch (const std::exception& e) {
-                // Exception in handling request
-                sendHttpResponse(clientSocket, 500, "text/plain", std::string("Internal Server Error: ") + e.what());
-            }
-        }
-        
-        // Close the client socket
-        closesocket(clientSocket);
-    }
-
-    // Clean up
-    if (g_serverSocket != INVALID_SOCKET) {
-        closesocket(g_serverSocket);
-        g_serverSocket = INVALID_SOCKET;
-    }
-
-    WSACleanup();
-    return 0;
-}
-
-// Function to read the HTTP request
-std::string readHttpRequest(SOCKET clientSocket) {
-    std::string request;
-    char buffer[MAX_REQUEST_SIZE];
-    int bytesReceived;
-    
-    // Set socket to blocking mode to receive full request
-    u_long mode = 0;
-    ioctlsocket(clientSocket, FIONBIO, &mode);
-    
-    // Receive data
-    bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
-    
-    if (bytesReceived > 0) {
-        buffer[bytesReceived] = '\0';
-        request = buffer;
-    }
-    
-    return request;
-}
-
-// Function to parse an HTTP request
-void parseHttpRequest(const std::string& request, std::string& method, std::string& path, std::string& query, std::string& body) {
-    // Parse the request line
-    size_t firstLineEnd = request.find("\r\n");
-    if (firstLineEnd == std::string::npos) {
-        return;
-    }
-    
-    std::string requestLine = request.substr(0, firstLineEnd);
-    
-    // Extract method and URL
-    size_t methodEnd = requestLine.find(' ');
-    if (methodEnd == std::string::npos) {
-        return;
-    }
-    
-    method = requestLine.substr(0, methodEnd);
-    
-    size_t urlEnd = requestLine.find(' ', methodEnd + 1);
-    if (urlEnd == std::string::npos) {
-        return;
-    }
-    
-    std::string url = requestLine.substr(methodEnd + 1, urlEnd - methodEnd - 1);
-    
-    // Split URL into path and query
-    size_t queryStart = url.find('?');
-    if (queryStart != std::string::npos) {
-        path = url.substr(0, queryStart);
-        query = url.substr(queryStart + 1);
-    } else {
-        path = url;
-        query = "";
-    }
-    
-    // Find the end of headers and start of body
-    size_t headersEnd = request.find("\r\n\r\n");
-    if (headersEnd == std::string::npos) {
-        return;
-    }
-    
-    // Extract body
-    body = request.substr(headersEnd + 4);
-}
-
-// Function to send HTTP response
-void sendHttpResponse(SOCKET clientSocket, int statusCode, const std::string& contentType, const std::string& responseBody) {
-    // Prepare status line
-    std::string statusText;
-    switch (statusCode) {
-        case 200: statusText = "OK"; break;
-        case 404: statusText = "Not Found"; break;
-        case 500: statusText = "Internal Server Error"; break;
-        default: statusText = "Unknown";
-    }
-    
-    // Build the response
-    std::stringstream response;
-    response << "HTTP/1.1 " << statusCode << " " << statusText << "\r\n";
-    response << "Content-Type: " << contentType << "\r\n";
-    response << "Content-Length: " << responseBody.length() << "\r\n";
-    response << "Connection: close\r\n";
-    response << "\r\n";
-    response << responseBody;
-    
-    // Send the response
-    std::string responseStr = response.str();
-    send(clientSocket, responseStr.c_str(), (int)responseStr.length(), 0);
-}
-
-// Parse query parameters from URL
-std::unordered_map<std::string, std::string> parseQueryParams(const std::string& query) {
+std::unordered_map<std::string, std::string> ParseQuery(const std::string& query) {
     std::unordered_map<std::string, std::string> params;
-    
     size_t pos = 0;
-    size_t nextPos;
-    
+
     while (pos < query.length()) {
-        nextPos = query.find('&', pos);
-        if (nextPos == std::string::npos) {
-            nextPos = query.length();
-        }
-        
+        size_t nextPos = query.find('&', pos);
+        if (nextPos == std::string::npos) nextPos = query.length();
+
         std::string pair = query.substr(pos, nextPos - pos);
-        size_t equalPos = pair.find('=');
-        
-        if (equalPos != std::string::npos) {
-            std::string key = pair.substr(0, equalPos);
-            std::string value = pair.substr(equalPos + 1);
+        size_t eqPos = pair.find('=');
+
+        if (eqPos != std::string::npos) {
+            std::string key = UrlDecode(pair.substr(0, eqPos));
+            std::string value = UrlDecode(pair.substr(eqPos + 1));
             params[key] = value;
         }
-        
+
         pos = nextPos + 1;
     }
-    
+
     return params;
 }
 
-// Command callback for toggling HTTP server
-bool cbEnableHttpServer(int argc, char* argv[]) {
-    if (g_httpServerRunning) {
-        _plugin_logputs("Stopping HTTP server...");
-        stopHttpServer();
-        _plugin_logputs("HTTP server stopped");
-    } else {
-        _plugin_logputs("Starting HTTP server...");
-        if (startHttpServer()) {
-            _plugin_logprintf("HTTP server started on port %d\n", g_httpPort);
-        } else {
-            _plugin_logputs("Failed to start HTTP server");
-        }
-    }
-    return true;
+//=============================================================================
+// Register Parsing
+//=============================================================================
+
+std::string ParseRegister(const std::string& name, Script::Register::RegisterEnum& reg) {
+    std::string lower = name;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+    if (lower == "eax") reg = Script::Register::EAX;
+    else if (lower == "ebx") reg = Script::Register::EBX;
+    else if (lower == "ecx") reg = Script::Register::ECX;
+    else if (lower == "edx") reg = Script::Register::EDX;
+    else if (lower == "esi") reg = Script::Register::ESI;
+    else if (lower == "edi") reg = Script::Register::EDI;
+    else if (lower == "ebp") reg = Script::Register::EBP;
+    else if (lower == "esp") reg = Script::Register::ESP;
+    else if (lower == "eip") reg = Script::Register::EIP;
+#ifdef _WIN64
+    else if (lower == "rax") reg = Script::Register::RAX;
+    else if (lower == "rbx") reg = Script::Register::RBX;
+    else if (lower == "rcx") reg = Script::Register::RCX;
+    else if (lower == "rdx") reg = Script::Register::RDX;
+    else if (lower == "rsi") reg = Script::Register::RSI;
+    else if (lower == "rdi") reg = Script::Register::RDI;
+    else if (lower == "rbp") reg = Script::Register::RBP;
+    else if (lower == "rsp") reg = Script::Register::RSP;
+    else if (lower == "rip") reg = Script::Register::RIP;
+    else if (lower == "r8") reg = Script::Register::R8;
+    else if (lower == "r9") reg = Script::Register::R9;
+    else if (lower == "r10") reg = Script::Register::R10;
+    else if (lower == "r11") reg = Script::Register::R11;
+    else if (lower == "r12") reg = Script::Register::R12;
+    else if (lower == "r13") reg = Script::Register::R13;
+    else if (lower == "r14") reg = Script::Register::R14;
+    else if (lower == "r15") reg = Script::Register::R15;
+#endif
+    else return "Unknown register: " + name;
+
+    return "";
 }
 
-// Command callback for changing HTTP server port
-bool cbSetHttpPort(int argc, char* argv[]) {
-    if (argc < 2) {
-        _plugin_logputs("Usage: httpport [port_number]");
-        return false;
-    }
-    
-    int port;
+//=============================================================================
+// API Endpoints
+//=============================================================================
+
+void HandleRequest(SOCKET client, const std::string& method, const std::string& path,
+                  const std::unordered_map<std::string, std::string>& params,
+                  const std::string& body) {
+
     try {
-        port = std::stoi(argv[1]);
-    }
-    catch (const std::exception&) {
-        _plugin_logputs("Invalid port number");
-        return false;
-    }
-    
-    if (port <= 0 || port > 65535) {
-        _plugin_logputs("Port number must be between 1 and 65535");
-        return false;
-    }
-    
-    g_httpPort = port;
-    
-    if (g_httpServerRunning) {
-        _plugin_logputs("Restarting HTTP server with new port...");
-        stopHttpServer();
-        if (startHttpServer()) {
-            _plugin_logprintf("HTTP server restarted on port %d\n", g_httpPort);
-        } else {
-            _plugin_logputs("Failed to restart HTTP server");
+        std::ostringstream response;
+
+        // Status endpoints
+        if (path == "/status") {
+            response << "{\"version\":" << PLUGIN_VERSION
+                    << ",\"arch\":\"" << ARCH_NAME << "\""
+                    << ",\"debugging\":" << (DbgIsDebugging() ? "true" : "false")
+                    << ",\"running\":" << (DbgIsRunning() ? "true" : "false")
+                    << "}";
+            SendResponse(client, 200, "application/json", response.str());
         }
-    } else {
-        _plugin_logprintf("HTTP port set to %d\n", g_httpPort);
+        // Command execution
+        else if (path == "/cmd") {
+            auto it = params.find("cmd");
+            if (it == params.end()) {
+                SendResponse(client, 400, "text/plain", "Missing 'cmd' parameter");
+                return;
+            }
+
+            bool success = DbgCmdExecDirect(it->second.c_str());
+            response << "{\"success\":" << (success ? "true" : "false")
+                    << ",\"command\":\"" << JsonEscape(it->second) << "\"}";
+            SendResponse(client, 200, "application/json", response.str());
+        }
+        // Register operations
+        else if (path == "/register/get") {
+            auto it = params.find("name");
+            if (it == params.end()) {
+                SendResponse(client, 400, "text/plain", "Missing 'name' parameter");
+                return;
+            }
+
+            Script::Register::RegisterEnum reg;
+            std::string err = ParseRegister(it->second, reg);
+            if (!err.empty()) {
+                SendResponse(client, 400, "text/plain", err);
+                return;
+            }
+
+            duint value = Script::Register::Get(reg);
+            response << "{\"register\":\"" << it->second << "\",\"value\":\"" << ToHex(value) << "\"}";
+            SendResponse(client, 200, "application/json", response.str());
+        }
+        else if (path == "/register/set") {
+            auto nameIt = params.find("name");
+            auto valueIt = params.find("value");
+            if (nameIt == params.end() || valueIt == params.end()) {
+                SendResponse(client, 400, "text/plain", "Missing 'name' or 'value' parameter");
+                return;
+            }
+
+            Script::Register::RegisterEnum reg;
+            std::string err = ParseRegister(nameIt->second, reg);
+            if (!err.empty()) {
+                SendResponse(client, 400, "text/plain", err);
+                return;
+            }
+
+            duint value = std::stoull(valueIt->second, nullptr, 0);
+            bool success = Script::Register::Set(reg, value);
+
+            response << "{\"success\":" << (success ? "true" : "false") << "}";
+            SendResponse(client, 200, "application/json", response.str());
+        }
+        // Memory operations
+        else if (path == "/memory/read") {
+            auto addrIt = params.find("addr");
+            auto sizeIt = params.find("size");
+            if (addrIt == params.end() || sizeIt == params.end()) {
+                SendResponse(client, 400, "text/plain", "Missing 'addr' or 'size' parameter");
+                return;
+            }
+
+            duint addr = std::stoull(addrIt->second, nullptr, 0);
+            duint size = std::stoull(sizeIt->second, nullptr, 0);
+
+            if (size > 1024 * 1024) {
+                SendResponse(client, 400, "text/plain", "Size too large (max 1MB)");
+                return;
+            }
+
+            std::vector<unsigned char> buffer(size);
+            duint bytesRead = 0;
+
+            if (!Script::Memory::Read(addr, buffer.data(), size, &bytesRead)) {
+                SendResponse(client, 500, "text/plain", "Failed to read memory");
+                return;
+            }
+
+            response << "{\"address\":\"" << ToHex(addr) << "\",\"size\":" << bytesRead << ",\"data\":\"";
+            for (duint i = 0; i < bytesRead; i++) {
+                response << std::hex << std::setw(2) << std::setfill('0') << (int)buffer[i];
+            }
+            response << "\"}";
+            SendResponse(client, 200, "application/json", response.str());
+        }
+        else if (path == "/memory/write") {
+            auto addrIt = params.find("addr");
+            auto dataIt = params.find("data");
+            if (addrIt == params.end() || dataIt == params.end()) {
+                SendResponse(client, 400, "text/plain", "Missing 'addr' or 'data' parameter");
+                return;
+            }
+
+            duint addr = std::stoull(addrIt->second, nullptr, 0);
+            std::string hexData = dataIt->second;
+
+            std::vector<unsigned char> buffer;
+            for (size_t i = 0; i < hexData.length(); i += 2) {
+                if (i + 1 >= hexData.length()) break;
+                unsigned char byte = (unsigned char)std::stoi(hexData.substr(i, 2), nullptr, 16);
+                buffer.push_back(byte);
+            }
+
+            duint bytesWritten = 0;
+            bool success = Script::Memory::Write(addr, buffer.data(), buffer.size(), &bytesWritten);
+
+            response << "{\"success\":" << (success ? "true" : "false")
+                    << ",\"bytes_written\":" << bytesWritten << "}";
+            SendResponse(client, 200, "application/json", response.str());
+        }
+        // Debug control
+        else if (path == "/debug/run") {
+            Script::Debug::Run();
+            SendResponse(client, 200, "application/json", "{\"success\":true}");
+        }
+        else if (path == "/debug/pause") {
+            Script::Debug::Pause();
+            SendResponse(client, 200, "application/json", "{\"success\":true}");
+        }
+        else if (path == "/debug/step") {
+            Script::Debug::StepIn();
+            SendResponse(client, 200, "application/json", "{\"success\":true}");
+        }
+        else if (path == "/debug/stepover") {
+            Script::Debug::StepOver();
+            SendResponse(client, 200, "application/json", "{\"success\":true}");
+        }
+        else if (path == "/debug/stepout") {
+            Script::Debug::StepOut();
+            SendResponse(client, 200, "application/json", "{\"success\":true}");
+        }
+        // Breakpoints
+        else if (path == "/breakpoint/set") {
+            auto addrIt = params.find("addr");
+            if (addrIt == params.end()) {
+                SendResponse(client, 400, "text/plain", "Missing 'addr' parameter");
+                return;
+            }
+
+            duint addr = std::stoull(addrIt->second, nullptr, 0);
+            bool success = Script::Debug::SetBreakpoint(addr);
+
+            response << "{\"success\":" << (success ? "true" : "false") << "}";
+            SendResponse(client, 200, "application/json", response.str());
+        }
+        else if (path == "/breakpoint/delete") {
+            auto addrIt = params.find("addr");
+            if (addrIt == params.end()) {
+                SendResponse(client, 400, "text/plain", "Missing 'addr' parameter");
+                return;
+            }
+
+            duint addr = std::stoull(addrIt->second, nullptr, 0);
+            bool success = Script::Debug::DeleteBreakpoint(addr);
+
+            response << "{\"success\":" << (success ? "true" : "false") << "}";
+            SendResponse(client, 200, "application/json", response.str());
+        }
+        // Disassembly
+        else if (path == "/disasm") {
+            auto addrIt = params.find("addr");
+            if (addrIt == params.end()) {
+                SendResponse(client, 400, "text/plain", "Missing 'addr' parameter");
+                return;
+            }
+
+            duint addr = std::stoull(addrIt->second, nullptr, 0);
+            DISASM_INSTR instr;
+            DbgDisasmAt(addr, &instr);
+
+            response << "{\"address\":\"" << ToHex(addr) << "\""
+                    << ",\"instruction\":\"" << JsonEscape(instr.instruction) << "\""
+                    << ",\"size\":" << instr.instr_size << "}";
+            SendResponse(client, 200, "application/json", response.str());
+        }
+        // Module list
+        else if (path == "/modules") {
+            ListInfo moduleList;
+            if (!Script::Module::GetList(&moduleList)) {
+                SendResponse(client, 500, "text/plain", "Failed to get module list");
+                return;
+            }
+
+            Script::Module::ModuleInfo* modules = (Script::Module::ModuleInfo*)moduleList.data;
+            response << "[";
+            for (size_t i = 0; i < moduleList.count; i++) {
+                if (i > 0) response << ",";
+                response << "{\"name\":\"" << JsonEscape(modules[i].name) << "\""
+                        << ",\"base\":\"" << ToHex(modules[i].base) << "\""
+                        << ",\"size\":\"" << ToHex(modules[i].size) << "\""
+                        << ",\"entry\":\"" << ToHex(modules[i].entry) << "\""
+                        << ",\"path\":\"" << JsonEscape(modules[i].path) << "\"}";
+            }
+            response << "]";
+            BridgeFree(moduleList.data);
+
+            SendResponse(client, 200, "application/json", response.str());
+        }
+        else {
+            SendResponse(client, 404, "text/plain", "Endpoint not found");
+        }
     }
-    
-    return true;
+    catch (const std::exception& e) {
+        std::string error = std::string("{\"error\":\"") + JsonEscape(e.what()) + "\"}";
+        SendResponse(client, 500, "application/json", error);
+    }
 }
 
-// Register plugin commands
-void registerCommands() {
-    _plugin_registercommand(g_pluginHandle, "httpserver", cbEnableHttpServer, 
-                           "Toggle HTTP server on/off");
-    _plugin_registercommand(g_pluginHandle, "httpport", cbSetHttpPort, 
-                           "Set HTTP server port");
+//=============================================================================
+// Server Thread
+//=============================================================================
+
+DWORD WINAPI ServerThread(LPVOID lpParam) {
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        _plugin_logprintf("[MCP] WSAStartup failed\n");
+        return 1;
+    }
+
+    g_serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (g_serverSocket == INVALID_SOCKET) {
+        _plugin_logprintf("[MCP] Failed to create socket\n");
+        WSACleanup();
+        return 1;
+    }
+
+    sockaddr_in serverAddr;
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    serverAddr.sin_port = htons((u_short)g_port);
+
+    if (bind(g_serverSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+        _plugin_logprintf("[MCP] Bind failed (port %d already in use?)\n", g_port);
+        closesocket(g_serverSocket);
+        WSACleanup();
+        return 1;
+    }
+
+    if (listen(g_serverSocket, SOMAXCONN) == SOCKET_ERROR) {
+        _plugin_logprintf("[MCP] Listen failed\n");
+        closesocket(g_serverSocket);
+        WSACleanup();
+        return 1;
+    }
+
+    _plugin_logprintf("[MCP] Server listening on http://127.0.0.1:%d\n", g_port);
+
+    u_long mode = 1;
+    ioctlsocket(g_serverSocket, FIONBIO, &mode);
+
+    while (g_running) {
+        sockaddr_in clientAddr;
+        int clientAddrSize = sizeof(clientAddr);
+        SOCKET clientSocket = accept(g_serverSocket, (sockaddr*)&clientAddr, &clientAddrSize);
+
+        if (clientSocket == INVALID_SOCKET) {
+            if (!g_running) break;
+            if (WSAGetLastError() != WSAEWOULDBLOCK) {
+                _plugin_logprintf("[MCP] Accept error: %d\n", WSAGetLastError());
+            }
+            Sleep(10);
+            continue;
+        }
+
+        // Read request
+        char buffer[MAX_REQUEST_SIZE];
+        int bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
+        if (bytesReceived > 0) {
+            buffer[bytesReceived] = '\0';
+            std::string request(buffer);
+
+            // Parse HTTP request line
+            size_t firstLineEnd = request.find("\r\n");
+            if (firstLineEnd != std::string::npos) {
+                std::string requestLine = request.substr(0, firstLineEnd);
+
+                size_t methodEnd = requestLine.find(' ');
+                size_t urlEnd = requestLine.find(' ', methodEnd + 1);
+                if (methodEnd != std::string::npos && urlEnd != std::string::npos) {
+                    std::string method = requestLine.substr(0, methodEnd);
+                    std::string url = requestLine.substr(methodEnd + 1, urlEnd - methodEnd - 1);
+
+                    std::string path, query;
+                    size_t queryStart = url.find('?');
+                    if (queryStart != std::string::npos) {
+                        path = url.substr(0, queryStart);
+                        query = url.substr(queryStart + 1);
+                    } else {
+                        path = url;
+                    }
+
+                    auto params = ParseQuery(query);
+
+                    // Extract body
+                    size_t bodyStart = request.find("\r\n\r\n");
+                    std::string body = (bodyStart != std::string::npos) ? request.substr(bodyStart + 4) : "";
+
+                    HandleRequest(clientSocket, method, path, params, body);
+                }
+            }
+        }
+
+        closesocket(clientSocket);
+    }
+
+    closesocket(g_serverSocket);
+    g_serverSocket = INVALID_SOCKET;
+    WSACleanup();
+
+    return 0;
 }
