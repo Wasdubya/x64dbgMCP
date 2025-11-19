@@ -11,9 +11,6 @@
 <h2 align="center"> <b>Model Context Protocol for x64dbg</b> </h2>
 
 <div align="center"> An MCP server that can bridge various LLMS with the x64dbg debugger, providing direct access to debugging functionality through prompts! </div>
-
-
-<div align="center"><b> THIS DOES NOT WORK AT THIS POINT IN TIME WITH THE LATEST VERSION OF CLAUDE DESKTOP AS THEY HAVE BROKEN NATIVE PYTHON MCP SUPPORT, IT HAS NOW BEEN DOWN FOR OVER THREE DAYS  </b> </div>
 <h2 align="center"> <b>Features</b> </h2>
 
 - **40+ x64dbg SDK Tools** - Provides access to almost every single debugging feature given by the SDK for smart debugging. 
