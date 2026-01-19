@@ -9,6 +9,11 @@ from mcp.server.fastmcp import FastMCP
 
 DEFAULT_X64DBG_SERVER = "http://127.0.0.1:8888/"
 
+# Timeout configurations for different operation types
+TIMEOUT_FAST = 5        # Simple queries (register read, flag check)
+TIMEOUT_NORMAL = 30     # Normal operations (memory read, disassembly)
+TIMEOUT_DEBUG = 120     # Debug control operations (run, step, breakpoint hit)
+
 def _resolve_server_url_from_args_env() -> str:
     env_url = os.getenv("X64DBG_URL")
     if env_url and env_url.startswith("http"):
@@ -26,7 +31,7 @@ def set_x64dbg_server_url(url: str) -> None:
 
 mcp = FastMCP("x64dbg-mcp")
 
-def safe_get(endpoint: str, params: dict = None):
+def safe_get(endpoint: str, params: dict = None, timeout: int = TIMEOUT_NORMAL):
     """
     Perform a GET request with optional query parameters.
     Returns parsed JSON if possible, otherwise text content
@@ -37,7 +42,7 @@ def safe_get(endpoint: str, params: dict = None):
     url = f"{x64dbg_server_url}{endpoint}"
 
     try:
-        response = requests.get(url, params=params, timeout=15)
+        response = requests.get(url, params=params, timeout=timeout)
         response.encoding = 'utf-8'
         if response.ok:
             # Try to parse as JSON first
@@ -50,7 +55,7 @@ def safe_get(endpoint: str, params: dict = None):
     except Exception as e:
         return f"Request failed: {str(e)}"
 
-def safe_post(endpoint: str, data: dict | str):
+def safe_post(endpoint: str, data: dict | str, timeout: int = TIMEOUT_NORMAL):
     """
     Perform a POST request with data.
     Returns parsed JSON if possible, otherwise text content
@@ -58,9 +63,9 @@ def safe_post(endpoint: str, data: dict | str):
     try:
         url = f"{x64dbg_server_url}{endpoint}"
         if isinstance(data, dict):
-            response = requests.post(url, data=data, timeout=5)
+            response = requests.post(url, data=data, timeout=timeout)
         else:
-            response = requests.post(url, data=data.encode("utf-8"), timeout=5)
+            response = requests.post(url, data=data.encode("utf-8"), timeout=timeout)
         
         response.encoding = 'utf-8'
         
@@ -335,61 +340,61 @@ def MemoryGetProtect(addr: str) -> str:
 def DebugRun() -> str:
     """
     Resume execution of the debugged process using Script API
-    
+
     Returns:
         Status message
     """
-    return safe_get("Debug/Run")
+    return safe_get("Debug/Run", timeout=TIMEOUT_DEBUG)
 
 @mcp.tool()
 def DebugPause() -> str:
     """
     Pause execution of the debugged process using Script API
-    
+
     Returns:
         Status message
     """
-    return safe_get("Debug/Pause")
+    return safe_get("Debug/Pause", timeout=TIMEOUT_DEBUG)
 
 @mcp.tool()
 def DebugStop() -> str:
     """
     Stop debugging using Script API
-    
+
     Returns:
         Status message
     """
-    return safe_get("Debug/Stop")
+    return safe_get("Debug/Stop", timeout=TIMEOUT_DEBUG)
 
 @mcp.tool()
 def DebugStepIn() -> str:
     """
     Step into the next instruction using Script API
-    
+
     Returns:
         Status message
     """
-    return safe_get("Debug/StepIn")
+    return safe_get("Debug/StepIn", timeout=TIMEOUT_DEBUG)
 
 @mcp.tool()
 def DebugStepOver() -> str:
     """
     Step over the next instruction using Script API
-    
+
     Returns:
         Status message
     """
-    return safe_get("Debug/StepOver")
+    return safe_get("Debug/StepOver", timeout=TIMEOUT_DEBUG)
 
 @mcp.tool()
 def DebugStepOut() -> str:
     """
     Step out of the current function using Script API
-    
+
     Returns:
         Status message
     """
-    return safe_get("Debug/StepOut")
+    return safe_get("Debug/StepOut", timeout=TIMEOUT_DEBUG)
 
 @mcp.tool()
 def DebugSetBreakpoint(addr: str) -> str:
@@ -659,51 +664,51 @@ def DeleteBreakpoint(addr: str) -> str:
 def Run() -> str:
     """
     Resume execution of the debugged process (legacy compatibility)
-    
+
     Returns:
         Status message
     """
-    return ExecCommand("run")
+    return safe_get("ExecCommand", {"cmd": "run"}, timeout=TIMEOUT_DEBUG)
 
 @mcp.tool()
 def Pause() -> str:
     """
     Pause execution of the debugged process (legacy compatibility)
-    
+
     Returns:
         Status message
     """
-    return ExecCommand("pause")
+    return safe_get("ExecCommand", {"cmd": "pause"}, timeout=TIMEOUT_DEBUG)
 
 @mcp.tool()
 def StepIn() -> str:
     """
     Step into the next instruction (legacy compatibility)
-    
+
     Returns:
         Status message
     """
-    return ExecCommand("sti")
+    return safe_get("ExecCommand", {"cmd": "sti"}, timeout=TIMEOUT_DEBUG)
 
 @mcp.tool()
 def StepOver() -> str:
     """
     Step over the next instruction (legacy compatibility)
-    
+
     Returns:
         Status message
     """
-    return ExecCommand("sto")
+    return safe_get("ExecCommand", {"cmd": "sto"}, timeout=TIMEOUT_DEBUG)
 
 @mcp.tool()
 def StepOut() -> str:
     """
     Step out of the current function (legacy compatibility)
-    
+
     Returns:
         Status message
     """
-    return ExecCommand("rtr")
+    return safe_get("ExecCommand", {"cmd": "rtr"}, timeout=TIMEOUT_DEBUG)
 
 @mcp.tool()
 def GetCallStack() -> list:
@@ -794,11 +799,11 @@ def DisasmGetInstructionAtRIP() -> dict:
 def StepInWithDisasm() -> dict:
     """
     Step into the next instruction and return both step result and current instruction disassembly
-    
+
     Returns:
         Dictionary containing step result and current instruction info
     """
-    result = safe_get("Disasm/StepInWithDisasm")
+    result = safe_get("Disasm/StepInWithDisasm", timeout=TIMEOUT_DEBUG)
     if isinstance(result, dict):
         return result
     elif isinstance(result, str):
