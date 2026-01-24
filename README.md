@@ -67,15 +67,6 @@
 
 ## Usage Examples
 
-**Set a breakpoint and analyze:**
-```
-"Set a breakpoint at the main function and step through the first few instructions"
-```
-
-**Memory analysis:**
-```
-"Read 100 bytes from address 0x401000 and show me what's there"
-```
 
 **Register inspection:**
 ```
@@ -86,7 +77,5 @@
 ```
 "Find the pattern '48 8B 05' in the current module"
 ```
-
-
-## Demo
-![Demo of Plug](Showcase.gif)
+**Example from Cursor**
+- I added a conversation sample to show what you should expect which can be viewed [here](https://github.com/Wasdubya/x64dbgMCP/blob/main/Cursor.Opus4.5-Find-PEB.md).Cursor is by far the best platform to use this tool.
