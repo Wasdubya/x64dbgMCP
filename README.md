@@ -77,5 +77,4 @@
 ```
 "Find the pattern '48 8B 05' in the current module"
 ```
-**Example from Cursor**
-- I added a conversation sample to show what you should expect which can be viewed [here](https://github.com/Wasdubya/x64dbgMCP/blob/main/Cursor.Opus4.5-Find-PEB.md).Cursor is by far the best platform to use this tool.
+**Example from [Cursor](https://github.com/Wasdubya/x64dbgMCP/blob/main/Cursor.Opus4.5-Find-PEB.md)**
