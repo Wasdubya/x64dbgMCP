@@ -8,7 +8,7 @@
 <div align="center"> An MCP server that can bridge various LLMS with the x64dbg debugger, providing direct access to debugging functionality through prompts! </div>
 <h2 align="center"> <b>Features</b> </h2>
 
-- <u>**40+ x64dbg SDK Tools**</u> - Provides access to almost every single debugging feature given by the SDK for smart debugging. 
+- <u>**40+ x64dbg SDK Tools**</u> - Provides access to almost every debugging feature given by the SDK for smart debugging. 
 - <u>**Cross-Architecture Support**</u> - Works with both x64dbg and x32dbg.
 - <u>**API Compatibility**</u> - (Disclaimer: As of 8-2025, Anthropic added rate limiting to their messages API, super harsh on free tiers. I recommend using models from Cursor UI)
      - Provides API access to Claude from CMD for even faster debugging and longer consecutive tool chain calls. 
