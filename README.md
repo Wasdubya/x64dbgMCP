@@ -1,14 +1,9 @@
-<h1 align="center"><b> x64dbg MCP </b> </h1>
+<h2 align="center">
+  <span style="border-bottom: 2px solid currentColor;">
+    Model Context Protocol for x64dbg <span style="margin-left: 100 px;"><a href="https://www.buymeacoffee.com/WASDUBYA" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="100" height="25"/></a></span>
+  </span>
+</h2>
 
-
-
-<p align="center">
-  <a href="https://www.buymeacoffee.com/WASDUBYA" target="_blank">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="200"/>
-  </a>
-</p>
-
-<h2 align="center"> <b><u>Model Context Protocol for x64dbg</u>u></b> </h2>
 
 <div align="center"> An MCP server that can bridge various LLMS with the x64dbg debugger, providing direct access to debugging functionality through prompts! </div>
 <h2 align="center"> <b>Features</b> </h2>
