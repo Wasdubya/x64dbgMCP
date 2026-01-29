@@ -15,8 +15,8 @@
 
 - **40+ x64dbg SDK Tools** - Provides access to almost every single debugging feature given by the SDK for smart debugging. 
 - **Cross-Architecture Support** - Works with both x64dbg and x32dbg.
-- **API Compatibility** (Disclaimer: As of 8-2025, Anthropic added rate limiting to their messages API, super harsh on free tiers. I recommned using models from Cursor UI) - Provides API access to Claude from CMD for even faster debugging and longer consecutive tool chain calls. 
-     - Runable from cmd using the args given in the python file. (API Key, max tool calls, Claude is limited to 25 but the api has a much higher limit.)
+- **API Compatibility** (Disclaimer: As of 8-2025, Anthropic added rate limiting to their messages API, super harsh on free tiers. I recommend using models from Cursor UI) - Provides API access to Claude from CMD for even faster debugging and longer consecutive tool chain calls. 
+     - Runable from cmd using the args given in the python file. (API Key, max tool calls, etc.)
      - *IF* you have issues connecting to the x64dbg session from the python file, open the logs tab in x64dbg to view what port the plugin is running on and add that as the argument to your python script.   
 
 ### Quick Setup
@@ -25,10 +25,10 @@
    - Grab .dp64 or .dp32 from this repo's build/release directory
    - Copy to your local: [x64dbg_dir]/release/x64/plugins/
 
-2. **Configure Claude Desktop**
+2. **Configure Claude / MCP Supported App **
    - Copy x64dbgmcp.py from this repos src directory
    - Update local claude_desktop_config.json with path to x64dbgmcp.py
-
+   
 ```json
 {
   "mcpServers": {
