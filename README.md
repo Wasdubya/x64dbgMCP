@@ -8,14 +8,15 @@
   </a>
 </p>
 
-<h2 align="center"> <b>Model Context Protocol for x64dbg</b> </h2>
+<h2 align="center"> <b><u>Model Context Protocol for x64dbg</u>u></b> </h2>
 
 <div align="center"> An MCP server that can bridge various LLMS with the x64dbg debugger, providing direct access to debugging functionality through prompts! </div>
 <h2 align="center"> <b>Features</b> </h2>
 
-- **40+ x64dbg SDK Tools** - Provides access to almost every single debugging feature given by the SDK for smart debugging. 
-- **Cross-Architecture Support** - Works with both x64dbg and x32dbg.
-- **API Compatibility** (Disclaimer: As of 8-2025, Anthropic added rate limiting to their messages API, super harsh on free tiers. I recommend using models from Cursor UI) - Provides API access to Claude from CMD for even faster debugging and longer consecutive tool chain calls. 
+- <u>**40+ x64dbg SDK Tools**</u> - Provides access to almost every single debugging feature given by the SDK for smart debugging. 
+- <u>**Cross-Architecture Support**</u> - Works with both x64dbg and x32dbg.
+- <u>**API Compatibility**</u> - (Disclaimer: As of 8-2025, Anthropic added rate limiting to their messages API, super harsh on free tiers. I recommend using models from Cursor UI)
+     - Provides API access to Claude from CMD for even faster debugging and longer consecutive tool chain calls. 
      - Runable from cmd using the args given in the python file. (API Key, max tool calls, etc.)
      - *IF* you have issues connecting to the x64dbg session from the python file, open the logs tab in x64dbg to view what port the plugin is running on and add that as the argument to your python script.   
 
