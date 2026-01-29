@@ -51,7 +51,7 @@
 - cmake -S . -B build
 - cmake --build build --target all_plugins --config Release
 
-🟨Tips for Build from source🟨
+*Tips*
 
 1. Use the --target all_plugins argument to specify both x32 and x64, otherwise use -A flag to distinguish between either x64 or Win32 build. For example 32 bit build would be:
 - cmake -S . -B build32  -A Win32 -DBUILD_BOTH_ARCHES=OFF
