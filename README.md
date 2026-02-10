@@ -27,7 +27,9 @@
      - Runable from cmd using the args given in the python file. (API Key, max tool calls, etc.)
      - *IF* you have issues connecting to the x64dbg session from the python file, open the logs tab in x64dbg to view what port the plugin is running on and add that as the argument to your python script.   
 
-### Quick Setup
+<h2> Quick Setup </h2>
+
+**Claude**
 
 1. **Download Plugin**
    - Grab .dp64 or .dp32 from this repo's build/release directory
@@ -55,7 +57,10 @@
    - Start Claude Desktop
    - Check plugin loaded successfully (ALT+L in x64dbg for logs)
 
-### Build from Source
+**Cursor** 
+- Set up is the same but the mcp config lives at ```"C:\Users\User\.cursor\mcp.json"```
+
+<h2> Build from Source </h2>
 - git clone [repository-url]
 - cd x64dbgmcp
 - cmake -S . -B build
@@ -70,7 +75,7 @@
 
 </b> This will allow for even more automated analysis. </b> 
 
-## Usage Examples
+<h2> Usage Examples </h2>
 
 
 **Register inspection:**
@@ -84,7 +89,7 @@
 ```
 **Example from [Cursor](https://github.com/Wasdubya/x64dbgMCP/blob/main/Cursor.Opus4.5-Find-PEB.md)**
 
-**Notes and More Tips for a Smoother Experience**
+<h2>Notes and More Tips for a Smoother Experience</h2>
 
 - Providing the path to the executable is very powerful as it can restart the binary if it hangs, I.E. if its stuck in execution or has gone to far down the wrong path, it can run "init C:\Path\to\exe"
 - Make sure it is responsibly probing right addresses, it also likes to assume module base addresses when checking patterns and doing other memory operations. So, the GetModuleList Tool Call is a good place to start for models.
