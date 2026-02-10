@@ -61,6 +61,7 @@
 - Set up is the same but the mcp config lives at ```"C:\Users\User\.cursor\mcp.json"```
 
 <h2> Build from Source </h2>
+
 - git clone [repository-url]
 - cd x64dbgmcp
 - cmake -S . -B build
