@@ -5,12 +5,24 @@
 </h2>
 
 
-<div align="center"> An MCP server that can bridge various LLMS with the x64dbg debugger, providing direct access to debugging functionality through prompts! </div>
+
+<div align="center"> An MCP server that can bridge various LLMS (Claude and Cursor Tested) with the x64dbg debugger, providing your model to debugging applications through prompts. </div><br><br>
+
+
+<div align="center">
+  <a href="https://github.com/wasubya/x64dbgmcp/">
+    <img src="https://img.shields.io/github/downloads/wasdubya/x64dbgmcp/total" alt="GitHub stars">
+  </a>
+  <a href="https://github.com/wasdubya/x64dbgmcp">
+    <img src="https://img.shields.io/github/stars/wasdubya/x64dbgmcp" alt="GitHub stars">
+  </a>
+</div>
+
 <h2 align="center"> <b>Features</b> </h2>
 
-- <u>**40+ x64dbg SDK Tools**</u> - Provides access to almost every debugging feature given by the SDK for smart debugging. 
-- <u>**Cross-Architecture Support**</u> - Works with both x64dbg and x32dbg.
-- <u>**API Compatibility**</u> - (Disclaimer: As of 8-2025, Anthropic added rate limiting to their messages API, super harsh on free tiers. I recommend using models from Cursor UI)
+- **40+ x64dbg SDK Tools**- Provides access to almost every debugging feature given by the SDK for smart debugging. 
+- **Cross-Architecture Support** - Works with both x64dbg and x32dbg.
+- **API Compatibility** - (Disclaimer: As of 8-2025, Anthropic added rate limiting to their messages API, super harsh on free tiers. I recommend using models from Cursor UI)
      - Provides API access to Claude from CMD for even faster debugging and longer consecutive tool chain calls. 
      - Runable from cmd using the args given in the python file. (API Key, max tool calls, etc.)
      - *IF* you have issues connecting to the x64dbg session from the python file, open the logs tab in x64dbg to view what port the plugin is running on and add that as the argument to your python script.   
@@ -44,15 +56,12 @@
    - Check plugin loaded successfully (ALT+L in x64dbg for logs)
 
 ### Build from Source
-
-
 - git clone [repository-url]
 - cd x64dbgmcp
 - cmake -S . -B build
 - cmake --build build --target all_plugins --config Release
 
-**Tips**
-
+**Tips for Build**
 1. Use the --target all_plugins argument to specify both x32 and x64, otherwise use -A flag to distinguish between either x64 or Win32 build. For example 32 bit build would be:
 - cmake -S . -B build32  -A Win32 -DBUILD_BOTH_ARCHES=OFF
 - cmake --build build32 --config Release
@@ -74,3 +83,11 @@
 "Find the pattern '48 8B 05' in the current module"
 ```
 **Example from [Cursor](https://github.com/Wasdubya/x64dbgMCP/blob/main/Cursor.Opus4.5-Find-PEB.md)**
+
+**Notes and More Tips for a Smoother Experience**
+
+- Providing the path to the executable is very powerful as it can restart the binary if it hangs, I.E. if its stuck in execution or has gone to far down the wrong path, it can run "init C:\Path\to\exe"
+- Make sure it is responsibly probing right addresses, it also likes to assume module base addresses when checking patterns and doing other memory operations. So, the GetModuleList Tool Call is a good place to start for models.
+- To prevent command hallucination, provide the model with the exact command syntax. Most can navigate well but it will sometimes get hung up on commands that do not even exist. Need a solution to this that does not require feeding it the entire command docs and using a ton of tokens. Or more tools that will add more tokens as well.🐛
+
+**🧀 Enjoy automated debugging! 🛎️**
