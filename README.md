@@ -1,6 +1,6 @@
 <h2 align="center">
   <span style="border-bottom: 2px solid currentColor;">
-    Model Context Protocol for x64dbg <span style="margin-left: 100 px;"><a href="https://www.buymeacoffee.com/WASDUBYA" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="100" height="25"/></a></span>
+    Model Context Protocol for x64dbg 
   </span>
 </h2>
 
@@ -15,7 +15,8 @@
   </a>
   <a href="https://github.com/wasdubya/x64dbgmcp">
     <img src="https://img.shields.io/github/stars/wasdubya/x64dbgmcp" alt="GitHub stars">
-  </a>
+  </a><br>
+  <a href="https://www.buymeacoffee.com/WASDUBYA" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="100" height="25"/></a></span>
 </div>
 
 <h2 align="center"> <b>Features</b> </h2>
