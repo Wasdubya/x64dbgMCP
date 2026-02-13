@@ -1,0 +1,10 @@
+^C:\USERS\WURTE\DESKTOP\X64DBGMCP\BUILD\BUILD64\CMAKEFILES\E2D0198C114553BF52F73F4AFBCDFA0B\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/wurte/Desktop/x64dbgmcp -BC:/Users/wurte/Desktop/x64dbgmcp/build/build64 --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/wurte/Desktop/x64dbgmcp/build/build64/MCPx64dbg.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

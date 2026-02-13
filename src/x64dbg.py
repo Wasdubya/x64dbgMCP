@@ -720,6 +720,51 @@ def QuerySymbols(module: str, offset: int = 0, limit: int = 5000) -> dict:
     return result
 
 @mcp.tool()
+def GetThreadList() -> dict:
+    """
+    Get list of all threads in the debugged process with detailed information.
+    
+    Returns:
+        Dictionary with:
+        - count: Number of threads
+        - currentThread: Index of the currently focused thread
+        - threads: List of thread objects with threadNumber, threadId, threadName,
+          startAddress, localBase, cip, suspendCount, priority, waitReason,
+          lastError, cycles
+    """
+    result = safe_get("GetThreadList")
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse thread list", "raw": result}
+    return {"error": "Unexpected response format"}
+
+@mcp.tool()
+def GetTebAddress(tid: str) -> dict:
+    """
+    Get the Thread Environment Block (TEB) address for a specific thread.
+    Use GetThreadList first to discover thread IDs.
+    
+    Args:
+        tid: Thread ID (decimal integer string, e.g. "1234")
+    
+    Returns:
+        Dictionary with tid and tebAddress fields
+    """
+    result = safe_get("GetTebAddress", {"tid": tid})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse TEB response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+@mcp.tool()
 def MemoryBase(addr: str) -> dict:
     """
     Find the base address and size of a module containing the given address

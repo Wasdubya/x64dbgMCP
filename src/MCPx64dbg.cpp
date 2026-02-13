@@ -1270,6 +1270,118 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     
                     sendHttpResponse(clientSocket, 200, "application/json", jsonResponse.str());
                 }
+                // =============================================================================
+                // THREAD API ENDPOINTS
+                // =============================================================================
+                else if (path == "/GetThreadList") {
+                    THREADLIST threadList;
+                    memset(&threadList, 0, sizeof(threadList));
+                    DbgGetThreadList(&threadList);
+                    
+                    if (threadList.count == 0 || threadList.list == nullptr) {
+                        sendHttpResponse(clientSocket, 200, "application/json",
+                            "{\"count\":0,\"currentThread\":-1,\"threads\":[]}");
+                        continue;
+                    }
+                    
+                    std::stringstream jsonResponse;
+                    jsonResponse << "{\"count\":" << threadList.count
+                                 << ",\"currentThread\":" << threadList.CurrentThread
+                                 << ",\"threads\":[";
+                    
+                    for (int i = 0; i < threadList.count; i++) {
+                        THREADALLINFO& t = threadList.list[i];
+                        
+                        if (i > 0) jsonResponse << ",";
+                        
+                        // Map priority enum to readable string
+                        const char* priorityStr = "Unknown";
+                        switch (t.Priority) {
+                            case _PriorityIdle:          priorityStr = "Idle"; break;
+                            case _PriorityAboveNormal:   priorityStr = "AboveNormal"; break;
+                            case _PriorityBelowNormal:   priorityStr = "BelowNormal"; break;
+                            case _PriorityHighest:       priorityStr = "Highest"; break;
+                            case _PriorityLowest:        priorityStr = "Lowest"; break;
+                            case _PriorityNormal:        priorityStr = "Normal"; break;
+                            case _PriorityTimeCritical:  priorityStr = "TimeCritical"; break;
+                            default: break;
+                        }
+                        
+                        // Map wait reason enum to readable string
+                        const char* waitStr = "Unknown";
+                        switch (t.WaitReason) {
+                            case _Executive:        waitStr = "Executive"; break;
+                            case _FreePage:         waitStr = "FreePage"; break;
+                            case _PageIn:           waitStr = "PageIn"; break;
+                            case _PoolAllocation:   waitStr = "PoolAllocation"; break;
+                            case _DelayExecution:   waitStr = "DelayExecution"; break;
+                            case _Suspended:        waitStr = "Suspended"; break;
+                            case _UserRequest:      waitStr = "UserRequest"; break;
+                            case _WrExecutive:      waitStr = "WrExecutive"; break;
+                            case _WrFreePage:       waitStr = "WrFreePage"; break;
+                            case _WrPageIn:         waitStr = "WrPageIn"; break;
+                            case _WrPoolAllocation: waitStr = "WrPoolAllocation"; break;
+                            case _WrDelayExecution: waitStr = "WrDelayExecution"; break;
+                            case _WrSuspended:      waitStr = "WrSuspended"; break;
+                            case _WrUserRequest:    waitStr = "WrUserRequest"; break;
+                            case _WrQueue:          waitStr = "WrQueue"; break;
+                            case _WrLpcReceive:     waitStr = "WrLpcReceive"; break;
+                            case _WrLpcReply:       waitStr = "WrLpcReply"; break;
+                            case _WrVirtualMemory:  waitStr = "WrVirtualMemory"; break;
+                            case _WrPageOut:        waitStr = "WrPageOut"; break;
+                            case _WrRendezvous:     waitStr = "WrRendezvous"; break;
+                            default: break;
+                        }
+                        
+                        jsonResponse << "{"
+                            << "\"threadNumber\":" << t.BasicInfo.ThreadNumber << ","
+                            << "\"threadId\":" << std::dec << t.BasicInfo.ThreadId << ","
+                            << "\"threadName\":\"" << escapeJsonString(t.BasicInfo.threadName) << "\","
+                            << "\"startAddress\":\"0x" << std::hex << t.BasicInfo.ThreadStartAddress << "\","
+                            << "\"localBase\":\"0x" << std::hex << t.BasicInfo.ThreadLocalBase << "\","
+                            << "\"cip\":\"0x" << std::hex << t.ThreadCip << "\","
+                            << "\"suspendCount\":" << std::dec << t.SuspendCount << ","
+                            << "\"priority\":\"" << priorityStr << "\","
+                            << "\"waitReason\":\"" << waitStr << "\","
+                            << "\"lastError\":" << std::dec << t.LastError << ","
+                            << "\"cycles\":" << std::dec << t.Cycles
+                            << "}";
+                    }
+                    
+                    jsonResponse << "]}";
+                    
+                    // Free the thread list
+                    BridgeFree(threadList.list);
+                    
+                    sendHttpResponse(clientSocket, 200, "application/json", jsonResponse.str());
+                }
+                else if (path == "/GetTebAddress") {
+                    std::string tidStr = queryParams["tid"];
+                    if (tidStr.empty()) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", "Missing 'tid' parameter (thread ID)");
+                        continue;
+                    }
+                    
+                    DWORD tid = 0;
+                    try {
+                        tid = (DWORD)std::stoul(tidStr, nullptr, 0);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid tid format");
+                        continue;
+                    }
+                    
+                    duint tebAddr = DbgGetTebAddress(tid);
+                    if (tebAddr == 0) {
+                        sendHttpResponse(clientSocket, 404, "application/json",
+                            "{\"error\":\"TEB not found for given thread ID\"}");
+                        continue;
+                    }
+                    
+                    std::stringstream ss;
+                    ss << "{\"tid\":" << std::dec << tid
+                       << ",\"tebAddress\":\"0x" << std::hex << tebAddr << "\"}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
                 // Memory Access Functions (Legacy endpoints for compatibility)
                 
             }

@@ -1,0 +1,128 @@
+^C:\USERS\WURTE\DESKTOP\X64DBGMCP\BUILD\CMAKEFILES\D3F25F9BBBB71D6DA32A2143564AD3E0\PLUGIN64-MKDIR.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -Dcfgdir=/Release -P C:/Users/wurte/Desktop/x64dbgmcp/build/plugin64-prefix/tmp/plugin64-mkdirs.cmake
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/wurte/Desktop/x64dbgmcp/build/plugin64-prefix/src/plugin64-stamp/Release/plugin64-mkdir
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\WURTE\DESKTOP\X64DBGMCP\BUILD\CMAKEFILES\D3F25F9BBBB71D6DA32A2143564AD3E0\PLUGIN64-DOWNLOAD.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/wurte/Desktop/x64dbgmcp/build/plugin64-prefix/src/plugin64-stamp/Release/plugin64-download
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\WURTE\DESKTOP\X64DBGMCP\BUILD\CMAKEFILES\D3F25F9BBBB71D6DA32A2143564AD3E0\PLUGIN64-UPDATE.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/wurte/Desktop/x64dbgmcp/build/plugin64-prefix/src/plugin64-stamp/Release/plugin64-update
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\WURTE\DESKTOP\X64DBGMCP\BUILD\CMAKEFILES\D3F25F9BBBB71D6DA32A2143564AD3E0\PLUGIN64-PATCH.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/wurte/Desktop/x64dbgmcp/build/plugin64-prefix/src/plugin64-stamp/Release/plugin64-patch
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\WURTE\DESKTOP\X64DBGMCP\BUILD\CMAKEFILES\D3F25F9BBBB71D6DA32A2143564AD3E0\PLUGIN64-CONFIGURE.RULE
+setlocal
+cd C:\Users\wurte\Desktop\x64dbgmcp\build\build64
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -G "Visual Studio 17 2022" -DCMAKE_GENERATOR_PLATFORM=x64 -DCMAKE_BUILD_TYPE=Release -DBUILD_BOTH_ARCHES=OFF "-GVisual Studio 17 2022" "-DCMAKE_GENERATOR_INSTANCE:INTERNAL=C:/Program Files/Microsoft Visual Studio/2022/Community" -S C:/Users/wurte/Desktop/x64dbgmcp -B C:/Users/wurte/Desktop/x64dbgmcp/build/build64
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/wurte/Desktop/x64dbgmcp/build/plugin64-prefix/src/plugin64-stamp/Release/plugin64-configure
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\WURTE\DESKTOP\X64DBGMCP\BUILD\CMAKEFILES\D3F25F9BBBB71D6DA32A2143564AD3E0\PLUGIN64-BUILD.RULE
+setlocal
+cd C:\Users\wurte\Desktop\x64dbgmcp\build\build64
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" --build . --config Release
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/wurte/Desktop/x64dbgmcp/build/plugin64-prefix/src/plugin64-stamp/Release/plugin64-build
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\WURTE\DESKTOP\X64DBGMCP\BUILD\CMAKEFILES\D3F25F9BBBB71D6DA32A2143564AD3E0\PLUGIN64-INSTALL.RULE
+setlocal
+cd C:\Users\wurte\Desktop\x64dbgmcp\build\build64
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/wurte/Desktop/x64dbgmcp/build/plugin64-prefix/src/plugin64-stamp/Release/plugin64-install
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\WURTE\DESKTOP\X64DBGMCP\BUILD\CMAKEFILES\8B8F15FC11E76C0DC8E8D1645A1079D1\PLUGIN64-COMPLETE.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E make_directory C:/Users/wurte/Desktop/x64dbgmcp/build/CMakeFiles/Release
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/wurte/Desktop/x64dbgmcp/build/CMakeFiles/Release/plugin64-complete
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/Users/wurte/Desktop/x64dbgmcp/build/plugin64-prefix/src/plugin64-stamp/Release/plugin64-done
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\WURTE\DESKTOP\X64DBGMCP\BUILD\CMAKEFILES\B21ABED01A89CF1BE59B1C5769F5231C\PLUGIN64.RULE
+setlocal
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\WURTE\DESKTOP\X64DBGMCP\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/wurte/Desktop/x64dbgmcp -BC:/Users/wurte/Desktop/x64dbgmcp/build --check-stamp-file C:/Users/wurte/Desktop/x64dbgmcp/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

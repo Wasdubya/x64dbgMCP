@@ -1,0 +1,1 @@
+cmd='C:/Program Files/CMake/bin/cmake.exe;-G;Visual Studio 17 2022;-DCMAKE_GENERATOR_PLATFORM=x64;-DCMAKE_BUILD_TYPE=$<IF:$<CONFIG:>,,Release>;-DBUILD_BOTH_ARCHES=OFF;-GVisual Studio 17 2022;-DCMAKE_GENERATOR_INSTANCE:INTERNAL=C:/Program Files/Microsoft Visual Studio/2022/Community;-S;<SOURCE_DIR><SOURCE_SUBDIR>;-B;<BINARY_DIR>'
