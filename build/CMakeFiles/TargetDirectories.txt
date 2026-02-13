@@ -1,5 +1,0 @@
-C:/Users/wurte/Desktop/x64dbgmcp/build/CMakeFiles/plugin32.dir
-C:/Users/wurte/Desktop/x64dbgmcp/build/CMakeFiles/plugin64.dir
-C:/Users/wurte/Desktop/x64dbgmcp/build/CMakeFiles/all_plugins.dir
-C:/Users/wurte/Desktop/x64dbgmcp/build/CMakeFiles/ALL_BUILD.dir
-C:/Users/wurte/Desktop/x64dbgmcp/build/CMakeFiles/ZERO_CHECK.dir
