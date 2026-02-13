@@ -645,23 +645,6 @@ def DisasmGetInstructionRange(addr: str, count: int = 1) -> list:
             return [{"error": "Failed to parse disassembly result", "raw": result}]
     return [{"error": "Unexpected response format"}]
 
-@mcp.tool()
-def DisasmGetInstructionAtRIP() -> dict:
-    """
-    Get disassembly of the instruction at the current RIP
-    
-    Returns:
-        Dictionary containing current instruction details
-    """
-    result = safe_get("Disasm/GetInstructionAtRIP")
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse disassembly result", "raw": result}
-    return {"error": "Unexpected response format"}
 
 @mcp.tool()
 def StepInWithDisasm() -> dict:
