@@ -39,6 +39,7 @@
 #include <memory>
 #include <fstream>
 #include <cctype>
+#include <functional>
 // Link with ws2_32.lib
 #pragma comment(lib, "ws2_32.lib")
 
@@ -347,8 +348,11 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", response);
                 }
                                 else if (path == "/IsDebugActive") {
-                    bool isRunning = DbgIsRunning();
-                    _plugin_logprintf("DbgIsRunning() called, result: %s\n", isRunning ? "true" : "false");
+                    bool isDebugging = DbgIsDebugging();
+                    bool isRunning = isDebugging && DbgIsRunning();
+                    _plugin_logprintf("DbgIsRunning() called, result: %s (debugging=%s)\n",
+                        isRunning ? "true" : "false",
+                        isDebugging ? "true" : "false");
                     std::stringstream ss;
                     ss << "{\"isRunning\":" << (isRunning ? "true" : "false") << "}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
@@ -615,16 +619,22 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                 // DEBUG API ENDPOINTS
                 // =============================================================================
                 else if (path == "/Debug/Run") {
-                    Script::Debug::Run();
-                    sendHttpResponse(clientSocket, 200, "text/plain", "Debug run executed");
+                    std::thread([]() {
+                        Script::Debug::Run();
+                    }).detach();
+                    sendHttpResponse(clientSocket, 200, "text/plain", "Debug run queued");
                 }
                 else if (path == "/Debug/Pause") {
-                    Script::Debug::Pause();
-                    sendHttpResponse(clientSocket, 200, "text/plain", "Debug pause executed");
+                    std::thread([]() {
+                        Script::Debug::Pause();
+                    }).detach();
+                    sendHttpResponse(clientSocket, 200, "text/plain", "Debug pause queued");
                 }
                 else if (path == "/Debug/Stop") {
-                    Script::Debug::Stop();
-                    sendHttpResponse(clientSocket, 200, "text/plain", "Debug stop executed");
+                    std::thread([]() {
+                        Script::Debug::Stop();
+                    }).detach();
+                    sendHttpResponse(clientSocket, 200, "text/plain", "Debug stop queued");
                 }
                 else if (path == "/Debug/StepIn") {
                     Script::Debug::StepIn();
@@ -1159,13 +1169,25 @@ std::string readHttpRequest(SOCKET clientSocket) {
     // Set socket to blocking mode to receive full request
     u_long mode = 0;
     ioctlsocket(clientSocket, FIONBIO, &mode);
-    
-    // Receive data
-    bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
-    
-    if (bytesReceived > 0) {
+
+    // Avoid hanging the single HTTP thread forever on slow/half-open clients.
+    DWORD timeoutMs = 1200;
+    setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeoutMs, sizeof(timeoutMs));
+
+    while (true) {
+        bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
+        if (bytesReceived <= 0) {
+            break;
+        }
         buffer[bytesReceived] = '\0';
-        request = buffer;
+        request.append(buffer, bytesReceived);
+        // We only need headers + tiny query/body for MCP endpoints.
+        if (request.find("\r\n\r\n") != std::string::npos || bytesReceived < (int)sizeof(buffer) - 1) {
+            break;
+        }
+        if (request.size() >= MAX_REQUEST_SIZE) {
+            break;
+        }
     }
     
     return request;
