@@ -645,23 +645,6 @@ def DisasmGetInstructionRange(addr: str, count: int = 1) -> list:
             return [{"error": "Failed to parse disassembly result", "raw": result}]
     return [{"error": "Unexpected response format"}]
 
-@mcp.tool()
-def DisasmGetInstructionAtRIP() -> dict:
-    """
-    Get disassembly of the instruction at the current RIP
-    
-    Returns:
-        Dictionary containing current instruction details
-    """
-    result = safe_get("Disasm/GetInstructionAtRIP")
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse disassembly result", "raw": result}
-    return {"error": "Unexpected response format"}
 
 @mcp.tool()
 def StepInWithDisasm() -> dict:
@@ -701,6 +684,42 @@ def GetModuleList() -> list:
     return [{"error": "Unexpected response format"}]
 
 @mcp.tool()
+def QuerySymbols(module: str, offset: int = 0, limit: int = 5000) -> dict:
+    """
+    Enumerate symbols for a specific module. Use GetModuleList first to discover module names.
+    Returns imports, exports, and user-defined function symbols for the given module.
+    
+    Args:
+        module: Module name to query symbols for (e.g. "kernel32.dll", "ntdll.dll"). Required.
+        offset: Pagination offset - number of symbols to skip (default: 0)
+        limit: Maximum number of symbols to return per page (default: 5000, max: 50000)
+    
+    Returns:
+        Dictionary with:
+        - total: Total number of symbols in the module
+        - module: The module name queried
+        - offset: Current offset
+        - limit: Current limit
+        - symbols: List of symbol objects with rva, name, manual, type fields
+    """
+    params = {
+        "module": module,
+        "offset": str(offset),
+        "limit": str(limit),
+    }
+    
+    result = safe_get("SymbolEnum", params)
+    
+    # Parse JSON response if it's a string
+    if isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    
+    return result
+
+@mcp.tool()
 def MemoryBase(addr: str) -> dict:
     """
     Find the base address and size of a module containing the given address
@@ -736,6 +755,38 @@ def MemoryBase(addr: str) -> dict:
             
     except Exception as e:
         return {"error": str(e)}
+        
+@mcp.tool()
+def SetPageRights(addr: str, rights: str) -> bool:
+    """
+    Set memory page protection rights at a given address
+
+    Args:
+        addr: Virtual address (hex string, e.g. "0x401000")
+        rights: Rights string (e.g. "rwx", "rx", "rw")
+
+    Returns:
+        True if successful, False otherwise
+    """
+    params = {
+        "addr": addr,
+        "rights": rights
+    }
+
+    result = safe_post("Memory/SetPageRights", params)
+
+    if isinstance(result, dict):
+        return result.get("success", False) is True
+
+    if isinstance(result, str):
+        try:
+            import json
+            parsed = json.loads(result)
+            return parsed.get("success", False) is True
+        except Exception:
+            return result.strip().lower() in ("ok", "true", "success")
+
+    return False
 
 import argparse
 

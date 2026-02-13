@@ -89,6 +89,7 @@ void sendHttpResponse(SOCKET clientSocket, int statusCode, const std::string& co
 void parseHttpRequest(const std::string& request, std::string& method, std::string& path, std::string& query, std::string& body);
 std::unordered_map<std::string, std::string> parseQueryParams(const std::string& query);
 std::string urlDecode(const std::string& str);
+std::string escapeJsonString(const char* str);
 
 // Command callback declarations
 bool cbEnableHttpServer(int argc, char* argv[]);
@@ -214,6 +215,34 @@ std::string urlDecode(const std::string& str) {
         }
     }
     return decoded;
+}
+
+// Escape a string for safe inclusion in a JSON string value
+std::string escapeJsonString(const char* str) {
+    std::string result;
+    if (!str) return result;
+    while (*str) {
+        switch (*str) {
+            case '\\': result += "\\\\"; break;
+            case '"':  result += "\\\""; break;
+            case '\b': result += "\\b"; break;
+            case '\f': result += "\\f"; break;
+            case '\n': result += "\\n"; break;
+            case '\r': result += "\\r"; break;
+            case '\t': result += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(*str) < 0x20) {
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(*str));
+                    result += buf;
+                } else {
+                    result += *str;
+                }
+                break;
+        }
+        str++;
+    }
+    return result;
 }
 
 // HTTP server thread function using standard Winsock
@@ -1126,6 +1155,120 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         // Send the response
                         sendHttpResponse(clientSocket, 200, "application/json", jsonResponse.str());
                     }
+                }
+                // =============================================================================
+                // SYMBOL ENUMERATION ENDPOINT
+                // =============================================================================
+                else if (path == "/SymbolEnum") {
+                    // Module name is required to keep response sizes manageable
+                    std::string moduleFilter = queryParams["module"];
+                    if (moduleFilter.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'module' parameter. Use GetModuleList to discover module names.\"}");
+                        continue;
+                    }
+                    
+                    // Parse pagination parameters
+                    std::string offsetStr = queryParams["offset"];
+                    std::string limitStr = queryParams["limit"];
+                    
+                    int offset = 0;
+                    int limit = 5000;
+                    
+                    if (!offsetStr.empty()) {
+                        try { offset = std::stoi(offsetStr); } catch (...) { offset = 0; }
+                    }
+                    if (!limitStr.empty()) {
+                        try { limit = std::stoi(limitStr); } catch (...) { limit = 5000; }
+                    }
+                    
+                    // Clamp values
+                    if (offset < 0) offset = 0;
+                    if (limit <= 0) limit = 5000;
+                    if (limit > 50000) limit = 50000;
+                    
+                    std::string moduleFilterDecoded = urlDecode(moduleFilter);
+                    
+                    // Get all symbols using Script::Symbol::GetList
+                    ListInfo symbolList;
+                    bool success = Script::Symbol::GetList(&symbolList);
+                    
+                    if (!success || symbolList.data == nullptr) {
+                        sendHttpResponse(clientSocket, 500, "application/json",
+                            "{\"error\":\"Failed to enumerate symbols\",\"symbols\":[],\"total\":0}");
+                        continue;
+                    }
+                    
+                    size_t totalCount = symbolList.count;
+                    Script::Symbol::SymbolInfo* symbols = (Script::Symbol::SymbolInfo*)symbolList.data;
+                    
+                    _plugin_logprintf("SymbolEnum: module='%s', total symbols from GetList = %llu, offset=%d, limit=%d\n",
+                        moduleFilterDecoded.c_str(), (unsigned long long)totalCount, offset, limit);
+                    
+                    // Build JSON response - filter to requested module only
+                    std::stringstream jsonResponse;
+                    
+                    int matchIndex = 0;   // Index among matching symbols
+                    int emitted = 0;      // Number of symbols emitted in this page
+                    int filteredTotal = 0; // Total matching symbols for this module
+                    
+                    // First pass: count total matching symbols for this module
+                    for (size_t i = 0; i < totalCount; i++) {
+                        if (_stricmp(symbols[i].mod, moduleFilterDecoded.c_str()) == 0) {
+                            filteredTotal++;
+                        }
+                    }
+                    
+                    // Write header
+                    jsonResponse << "{\"total\":" << filteredTotal
+                                 << ",\"module\":\"" << escapeJsonString(moduleFilterDecoded.c_str()) << "\""
+                                 << ",\"offset\":" << offset
+                                 << ",\"limit\":" << limit
+                                 << ",\"symbols\":[";
+                    
+                    // Second pass: emit symbols with pagination
+                    for (size_t i = 0; i < totalCount && emitted < limit; i++) {
+                        // Filter to requested module
+                        if (_stricmp(symbols[i].mod, moduleFilterDecoded.c_str()) != 0) {
+                            continue;
+                        }
+                        
+                        // Apply offset (skip first N matching symbols)
+                        if (matchIndex < offset) {
+                            matchIndex++;
+                            continue;
+                        }
+                        matchIndex++;
+                        
+                        // Determine type string
+                        const char* typeStr = "unknown";
+                        switch (symbols[i].type) {
+                            case Script::Symbol::Function: typeStr = "function"; break;
+                            case Script::Symbol::Import:   typeStr = "import"; break;
+                            case Script::Symbol::Export:   typeStr = "export"; break;
+                        }
+                        
+                        if (emitted > 0) jsonResponse << ",";
+                        
+                        jsonResponse << "{"
+                                     << "\"rva\":\"0x" << std::hex << symbols[i].rva << "\","
+                                     << "\"name\":\"" << escapeJsonString(symbols[i].name) << "\","
+                                     << "\"manual\":" << (symbols[i].manual ? "true" : "false") << ","
+                                     << "\"type\":\"" << typeStr << "\""
+                                     << "}";
+                        
+                        emitted++;
+                    }
+                    
+                    jsonResponse << "]}";
+                    
+                    // Free the list
+                    BridgeFree(symbolList.data);
+                    
+                    _plugin_logprintf("SymbolEnum: returned %d symbols for '%s' (module total: %d)\n",
+                        emitted, moduleFilterDecoded.c_str(), filteredTotal);
+                    
+                    sendHttpResponse(clientSocket, 200, "application/json", jsonResponse.str());
                 }
                 // Memory Access Functions (Legacy endpoints for compatibility)
                 
