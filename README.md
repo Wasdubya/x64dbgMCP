@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/github/downloads/wasdubya/x64dbgmcp/total?style=for-the-badge" />
 </p>
 
-<div align="center"> An MCP server that can bridge various LLMS (Claude and Cursor tested) with the x64dbg debugger, providing direct access to debugging applications through prompts. </div>
+<div align="center"> An MCP server that can bridge various LLMS (Claude and Cursor tested) with the x64dbg debugger, providing direct access to debugging applications through prompts. This is the best open source dynamic analysis assistant combined with a smart model! </div>
 <h2 align="center"> <b>Features</b> </h2>
 
 - **40+ x64dbg SDK Tools** - Provides access to almost every single debugging feature given by the SDK for smart debugging. 
@@ -87,7 +87,5 @@
 **More Usage**
   - If you do not provide the model you are working with context of where your exe is, it wont have the capabiltiy to restart the binary if it crashes or hangs. So, provide it with the full path of the binary so it can call the CMDEXEC function like "init C:\Absolute\Path\to\EXE".
   - GetModuleBase is the best place to start for models so it will query for the right addresses, x64dbg will not respond to addresses out of range.
-<br>
-<br>
-🧀**Enjoy Automated Debugging**🛎️
-<br>
+
+🧀 **Enjoy Automated Debugging** 🛎️
