@@ -342,38 +342,100 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    // Generate unique log file path
-                    char tempPath[MAX_PATH];
-                    GetTempPathA(MAX_PATH, tempPath);
-                    std::string logFile = std::string(tempPath) + "x64dbg_cmd_" + 
-                        std::to_string(GetTickCount64()) + ".log";
-                    
-                    // Clear the log first
-                    GuiLogRedirect(logFile.c_str());
-                    // Execute the command
+                    // Snapshot the references tab row count before the command
+                    int refRowCountBefore = GuiReferenceGetRowCount();
+
+                    // Execute the command synchronously
                     bool success = DbgCmdExecDirect(cmd.c_str());
-                    GuiFlushLog();
-                    Sleep(300);
-                    GuiLogRedirectStop();
-                    // Wait for command to complete
-                    Sleep(100);
-                
-                    
-                    // Read the saved log
-                    std::string output;
-                    std::ifstream file(logFile);
-                    if (file) {
-                        std::stringstream buffer;
-                        buffer << file.rdbuf();
-                        output = buffer.str();
+
+                    // Check if the references tab changed (command populated it fresh)
+                    int refRowCountAfter = GuiReferenceGetRowCount();
+                    bool refChanged = (refRowCountAfter != refRowCountBefore);
+
+                    // If row counts match, do a quick content check on the first row
+                    // to detect cases where a new search returned the same number of rows
+                    if (!refChanged && refRowCountAfter > 0) {
+                        // We can't perfectly detect this without storing old content,
+                        // but a count change covers the vast majority of cases.
+                        // As a heuristic: if the command starts with a known ref-producing
+                        // keyword, assume it changed.
+                        std::string cmdLower = cmd;
+                        std::transform(cmdLower.begin(), cmdLower.end(), cmdLower.begin(), ::tolower);
+                        if (cmdLower.find("refstr") == 0 ||
+                            cmdLower.find("reffind") == 0 ||
+                            cmdLower.find("reffindrange") == 0 ||
+                            cmdLower.find("findall") == 0 ||
+                            cmdLower.find("findallmem") == 0 ||
+                            cmdLower.find("findasm") == 0 ||
+                            cmdLower.find("modcallfind") == 0 ||
+                            cmdLower.find("guidfind") == 0 ||
+                            cmdLower.find("strref") == 0) {
+                            refChanged = true;
+                        }
                     }
-                 
-                    
-                    std::string response = output.empty() 
-                        ? (success ? "Command executed (no output)" : "Command failed")
-                        : output;
-                    DeleteFileA(logFile.c_str());
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", response);
+
+                    // Pagination parameters for reference view results
+                    int refOffset = 0;
+                    int refLimit = 100;  // default page size
+                    if (!queryParams["offset"].empty()) {
+                        try { refOffset = std::stoi(queryParams["offset"]); } catch (...) {}
+                        if (refOffset < 0) refOffset = 0;
+                    }
+                    if (!queryParams["limit"].empty()) {
+                        try { refLimit = std::stoi(queryParams["limit"]); } catch (...) {}
+                        if (refLimit < 1) refLimit = 1;
+                        if (refLimit > 5000) refLimit = 5000;
+                    }
+
+                    int totalRows = refChanged ? refRowCountAfter : 0;
+
+                    std::stringstream ss;
+                    ss << "{";
+                    ss << "\"success\":" << (success ? "true" : "false") << ",";
+                    ss << "\"refView\":{";
+                    ss << "\"rowCount\":" << totalRows << ",";
+                    ss << "\"rows\":[";
+
+                    if (totalRows > 0) {
+                        // Clamp offset/limit to actual data range
+                        if (refOffset >= totalRows) refOffset = totalRows;
+                        int endRow = refOffset + refLimit;
+                        if (endRow > totalRows) endRow = totalRows;
+
+                        // Determine column count by probing the first row (up to 10 columns)
+                        int numCols = 0;
+                        for (int c = 0; c < 10; c++) {
+                            char* cell = GuiReferenceGetCellContent(0, c);
+                            if (cell) {
+                                if (cell[0] != '\0') {
+                                    numCols = c + 1;
+                                }
+                                BridgeFree(cell);
+                            }
+                        }
+                        if (numCols < 2) numCols = 2;
+
+                        bool firstRow = true;
+                        for (int row = refOffset; row < endRow; row++) {
+                            if (!firstRow) ss << ",";
+                            firstRow = false;
+                            ss << "[";
+                            for (int col = 0; col < numCols; col++) {
+                                if (col > 0) ss << ",";
+                                char* cell = GuiReferenceGetCellContent(row, col);
+                                if (cell) {
+                                    ss << "\"" << escapeJsonString(cell) << "\"";
+                                    BridgeFree(cell);
+                                } else {
+                                    ss << "\"\"";
+                                }
+                            }
+                            ss << "]";
+                        }
+                    }
+
+                    ss << "]}}";
+                    sendHttpResponse(clientSocket, success ? 200 : 500, "application/json", ss.str());
                 }
                                 else if (path == "/IsDebugActive") {
                     bool isRunning = DbgIsRunning();
@@ -1382,7 +1444,809 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                        << ",\"tebAddress\":\"0x" << std::hex << tebAddr << "\"}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // Memory Access Functions (Legacy endpoints for compatibility)
+                // =============================================================================
+                // STRING API ENDPOINTS
+                // =============================================================================
+                else if (path == "/String/GetAt") {
+                    std::string addrStr = queryParams["addr"];
+                    if (addrStr.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'addr' parameter\"}");
+                        continue;
+                    }
+                    
+                    duint addr = 0;
+                    try {
+                        addr = std::stoull(addrStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid address format\"}");
+                        continue;
+                    }
+                    
+                    char text[MAX_STRING_SIZE] = {0};
+                    bool found = DbgGetStringAt(addr, text);
+                    
+                    std::stringstream ss;
+                    ss << "{\"address\":\"0x" << std::hex << addr << "\","
+                       << "\"found\":" << (found ? "true" : "false") << ","
+                       << "\"string\":\"" << escapeJsonString(text) << "\"}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                // =============================================================================
+                // XREF API ENDPOINTS
+                // =============================================================================
+                else if (path == "/Xref/Get") {
+                    std::string addrStr = queryParams["addr"];
+                    if (addrStr.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'addr' parameter\"}");
+                        continue;
+                    }
+                    
+                    duint addr = 0;
+                    try {
+                        addr = std::stoull(addrStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid address format\"}");
+                        continue;
+                    }
+                    
+                    XREF_INFO xrefInfo = {0};
+                    bool success = DbgXrefGet(addr, &xrefInfo);
+                    
+                    std::stringstream ss;
+                    ss << "{\"address\":\"0x" << std::hex << addr << "\","
+                       << "\"refcount\":" << std::dec << (success ? xrefInfo.refcount : 0) << ","
+                       << "\"references\":[";
+                    
+                    if (success && xrefInfo.references != nullptr) {
+                        for (duint i = 0; i < xrefInfo.refcount; i++) {
+                            if (i > 0) ss << ",";
+                            
+                            const char* typeStr = "none";
+                            switch (xrefInfo.references[i].type) {
+                                case XREF_DATA: typeStr = "data"; break;
+                                case XREF_JMP:  typeStr = "jmp"; break;
+                                case XREF_CALL: typeStr = "call"; break;
+                                default: typeStr = "none"; break;
+                            }
+                            
+                            // Also try to get the string at the target address for context
+                            char refString[MAX_STRING_SIZE] = {0};
+                            DbgGetStringAt(xrefInfo.references[i].addr, refString);
+                            
+                            ss << "{\"addr\":\"0x" << std::hex << xrefInfo.references[i].addr << "\","
+                               << "\"type\":\"" << typeStr << "\"";
+                            
+                            if (refString[0] != '\0') {
+                                ss << ",\"string\":\"" << escapeJsonString(refString) << "\"";
+                            }
+                            
+                            ss << "}";
+                        }
+                        
+                        // Free the references array
+                        BridgeFree(xrefInfo.references);
+                    }
+                    
+                    ss << "]}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                else if (path == "/Xref/Count") {
+                    std::string addrStr = queryParams["addr"];
+                    if (addrStr.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'addr' parameter\"}");
+                        continue;
+                    }
+                    
+                    duint addr = 0;
+                    try {
+                        addr = std::stoull(addrStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid address format\"}");
+                        continue;
+                    }
+                    
+                    size_t count = DbgGetXrefCountAt(addr);
+                    
+                    std::stringstream ss;
+                    ss << "{\"address\":\"0x" << std::hex << addr << "\","
+                       << "\"count\":" << std::dec << count << "}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                // =============================================================================
+                // MEMORY MAP ENDPOINT
+                // =============================================================================
+                else if (path == "/MemoryMap") {
+                    MEMMAP memmap;
+                    memset(&memmap, 0, sizeof(memmap));
+                    bool success = DbgMemMap(&memmap);
+                    
+                    if (!success || memmap.page == nullptr || memmap.count == 0) {
+                        sendHttpResponse(clientSocket, 500, "application/json",
+                            "{\"error\":\"Failed to get memory map\",\"pages\":[]}");
+                        continue;
+                    }
+                    
+                    std::stringstream ss;
+                    ss << "{\"count\":" << memmap.count << ",\"pages\":[";
+                    
+                    for (int i = 0; i < memmap.count; i++) {
+                        if (i > 0) ss << ",";
+                        MEMPAGE& p = memmap.page[i];
+                        
+                        // Decode protection to string
+                        const char* protectStr = "---";
+                        DWORD prot = p.mbi.Protect & 0xFF;
+                        if (prot == PAGE_EXECUTE_READWRITE) protectStr = "ERW";
+                        else if (prot == PAGE_EXECUTE_READ) protectStr = "ER-";
+                        else if (prot == PAGE_EXECUTE_WRITECOPY) protectStr = "ERW";
+                        else if (prot == PAGE_READWRITE) protectStr = "-RW";
+                        else if (prot == PAGE_READONLY) protectStr = "-R-";
+                        else if (prot == PAGE_WRITECOPY) protectStr = "-RW";
+                        else if (prot == PAGE_EXECUTE) protectStr = "E--";
+                        else if (prot == PAGE_NOACCESS) protectStr = "---";
+                        
+                        // Decode type
+                        const char* typeStr = "Unknown";
+                        if (p.mbi.Type == MEM_IMAGE) typeStr = "IMG";
+                        else if (p.mbi.Type == MEM_MAPPED) typeStr = "MAP";
+                        else if (p.mbi.Type == MEM_PRIVATE) typeStr = "PRV";
+                        
+                        ss << "{\"base\":\"0x" << std::hex << (duint)p.mbi.BaseAddress << "\","
+                           << "\"size\":\"0x" << std::hex << p.mbi.RegionSize << "\","
+                           << "\"protect\":\"" << protectStr << "\","
+                           << "\"type\":\"" << typeStr << "\","
+                           << "\"info\":\"" << escapeJsonString(p.info) << "\"}";
+                    }
+                    
+                    ss << "]}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                // =============================================================================
+                // REMOTE MEMORY ALLOC/FREE ENDPOINTS
+                // =============================================================================
+                else if (path == "/Memory/RemoteAlloc") {
+                    std::string addrStr = queryParams["addr"];
+                    std::string sizeStr = queryParams["size"];
+                    
+                    if (sizeStr.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'size' parameter\"}");
+                        continue;
+                    }
+                    
+                    duint addr = 0;
+                    duint size = 0;
+                    try {
+                        if (!addrStr.empty()) addr = std::stoull(addrStr, nullptr, 16);
+                        size = std::stoull(sizeStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid parameter format\"}");
+                        continue;
+                    }
+                    
+                    duint result = Script::Memory::RemoteAlloc(addr, size);
+                    
+                    if (result == 0) {
+                        sendHttpResponse(clientSocket, 500, "application/json",
+                            "{\"error\":\"RemoteAlloc failed\"}");
+                    } else {
+                        std::stringstream ss;
+                        ss << "{\"address\":\"0x" << std::hex << result << "\","
+                           << "\"size\":\"0x" << std::hex << size << "\"}";
+                        sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                    }
+                }
+                else if (path == "/Memory/RemoteFree") {
+                    std::string addrStr = queryParams["addr"];
+                    if (addrStr.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'addr' parameter\"}");
+                        continue;
+                    }
+                    
+                    duint addr = 0;
+                    try {
+                        addr = std::stoull(addrStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid address format\"}");
+                        continue;
+                    }
+                    
+                    bool success = Script::Memory::RemoteFree(addr);
+                    std::stringstream ss;
+                    ss << "{\"success\":" << (success ? "true" : "false") << "}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                // =============================================================================
+                // BRANCH DESTINATION ENDPOINT
+                // =============================================================================
+                else if (path == "/GetBranchDestination") {
+                    std::string addrStr = queryParams["addr"];
+                    if (addrStr.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'addr' parameter\"}");
+                        continue;
+                    }
+                    
+                    duint addr = 0;
+                    try {
+                        addr = std::stoull(addrStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid address format\"}");
+                        continue;
+                    }
+                    
+                    duint dest = DbgGetBranchDestination(addr);
+                    
+                    std::stringstream ss;
+                    ss << "{\"address\":\"0x" << std::hex << addr << "\","
+                       << "\"destination\":\"0x" << std::hex << dest << "\","
+                       << "\"resolved\":" << (dest != 0 ? "true" : "false") << "}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                // =============================================================================
+                // CALL STACK ENDPOINT
+                // =============================================================================
+                else if (path == "/GetCallStack") {
+                    const DBGFUNCTIONS* dbgFunc = DbgFunctions();
+                    if (!dbgFunc || !dbgFunc->GetCallStackEx) {
+                        sendHttpResponse(clientSocket, 500, "application/json",
+                            "{\"error\":\"GetCallStackEx not available\"}");
+                        continue;
+                    }
+                    
+                    DBGCALLSTACK callstack;
+                    memset(&callstack, 0, sizeof(callstack));
+                    dbgFunc->GetCallStackEx(&callstack, true);
+                    
+                    std::stringstream ss;
+                    ss << "{\"total\":" << callstack.total << ",\"entries\":[";
+                    
+                    if (callstack.entries != nullptr) {
+                        for (int i = 0; i < callstack.total; i++) {
+                            if (i > 0) ss << ",";
+                            DBGCALLSTACKENTRY& e = callstack.entries[i];
+                            ss << "{\"addr\":\"0x" << std::hex << e.addr << "\","
+                               << "\"from\":\"0x" << std::hex << e.from << "\","
+                               << "\"to\":\"0x" << std::hex << e.to << "\","
+                               << "\"comment\":\"" << escapeJsonString(e.comment) << "\"}";
+                        }
+                        BridgeFree(callstack.entries);
+                    }
+                    
+                    ss << "]}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                // =============================================================================
+                // BREAKPOINT LIST ENDPOINT
+                // =============================================================================
+                else if (path == "/Breakpoint/List") {
+                    std::string typeStr = queryParams["type"];
+                    
+                    // Default to listing all breakpoint types
+                    BPXTYPE bpType = bp_normal;
+                    if (typeStr == "hardware") bpType = bp_hardware;
+                    else if (typeStr == "memory") bpType = bp_memory;
+                    else if (typeStr == "dll") bpType = bp_dll;
+                    else if (typeStr == "exception") bpType = bp_exception;
+                    else if (typeStr == "normal" || typeStr.empty()) bpType = bp_normal;
+                    
+                    // If type is "all", we gather all types
+                    bool getAllTypes = (typeStr == "all" || typeStr.empty());
+                    
+                    std::stringstream ss;
+                    ss << "{\"breakpoints\":[";
+                    
+                    int totalEmitted = 0;
+                    
+                    // Types to iterate
+                    BPXTYPE types[] = { bp_normal, bp_hardware, bp_memory, bp_dll, bp_exception };
+                    int numTypes = getAllTypes ? 5 : 1;
+                    BPXTYPE* typeList = getAllTypes ? types : &bpType;
+                    
+                    for (int t = 0; t < numTypes; t++) {
+                        BPMAP bpmap;
+                        memset(&bpmap, 0, sizeof(bpmap));
+                        int count = DbgGetBpList(typeList[t], &bpmap);
+                        
+                        if (count > 0 && bpmap.bp != nullptr) {
+                            for (int i = 0; i < bpmap.count; i++) {
+                                if (totalEmitted > 0) ss << ",";
+                                BRIDGEBP& bp = bpmap.bp[i];
+                                
+                                const char* bpTypeStr = "unknown";
+                                switch (bp.type) {
+                                    case bp_normal:    bpTypeStr = "normal"; break;
+                                    case bp_hardware:  bpTypeStr = "hardware"; break;
+                                    case bp_memory:    bpTypeStr = "memory"; break;
+                                    case bp_dll:       bpTypeStr = "dll"; break;
+                                    case bp_exception: bpTypeStr = "exception"; break;
+                                    default: break;
+                                }
+                                
+                                ss << "{\"type\":\"" << bpTypeStr << "\","
+                                   << "\"addr\":\"0x" << std::hex << bp.addr << "\","
+                                   << "\"enabled\":" << (bp.enabled ? "true" : "false") << ","
+                                   << "\"singleshoot\":" << (bp.singleshoot ? "true" : "false") << ","
+                                   << "\"active\":" << (bp.active ? "true" : "false") << ","
+                                   << "\"name\":\"" << escapeJsonString(bp.name) << "\","
+                                   << "\"module\":\"" << escapeJsonString(bp.mod) << "\","
+                                   << "\"hitCount\":" << std::dec << bp.hitCount << ","
+                                   << "\"fastResume\":" << (bp.fastResume ? "true" : "false") << ","
+                                   << "\"silent\":" << (bp.silent ? "true" : "false") << ","
+                                   << "\"breakCondition\":\"" << escapeJsonString(bp.breakCondition) << "\","
+                                   << "\"logText\":\"" << escapeJsonString(bp.logText) << "\","
+                                   << "\"commandText\":\"" << escapeJsonString(bp.commandText) << "\""
+                                   << "}";
+                                totalEmitted++;
+                            }
+                            BridgeFree(bpmap.bp);
+                        }
+                    }
+                    
+                    ss << "],\"count\":" << std::dec << totalEmitted << "}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                // =============================================================================
+                // LABEL GET/SET ENDPOINTS
+                // =============================================================================
+                else if (path == "/Label/Set") {
+                    std::string addrStr = queryParams["addr"];
+                    std::string text = queryParams["text"];
+                    if (!body.empty() && text.empty()) text = body;
+                    text = urlDecode(text);
+                    
+                    if (addrStr.empty() || text.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'addr' and 'text' parameters\"}");
+                        continue;
+                    }
+                    
+                    duint addr = 0;
+                    try {
+                        addr = std::stoull(addrStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid address format\"}");
+                        continue;
+                    }
+                    
+                    bool success = DbgSetLabelAt(addr, text.c_str());
+                    std::stringstream ss;
+                    ss << "{\"success\":" << (success ? "true" : "false") << ","
+                       << "\"address\":\"0x" << std::hex << addr << "\","
+                       << "\"label\":\"" << escapeJsonString(text.c_str()) << "\"}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                else if (path == "/Label/Get") {
+                    std::string addrStr = queryParams["addr"];
+                    if (addrStr.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'addr' parameter\"}");
+                        continue;
+                    }
+                    
+                    duint addr = 0;
+                    try {
+                        addr = std::stoull(addrStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid address format\"}");
+                        continue;
+                    }
+                    
+                    char text[MAX_LABEL_SIZE] = {0};
+                    bool found = DbgGetLabelAt(addr, SEG_DEFAULT, text);
+                    
+                    std::stringstream ss;
+                    ss << "{\"address\":\"0x" << std::hex << addr << "\","
+                       << "\"found\":" << (found ? "true" : "false") << ","
+                       << "\"label\":\"" << escapeJsonString(text) << "\"}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                else if (path == "/Label/List") {
+                    ListInfo labelList;
+                    bool success = Script::Label::GetList(&labelList);
+                    
+                    if (!success || labelList.data == nullptr) {
+                        sendHttpResponse(clientSocket, 200, "application/json",
+                            "{\"count\":0,\"labels\":[]}");
+                        continue;
+                    }
+                    
+                    Script::Label::LabelInfo* labels = (Script::Label::LabelInfo*)labelList.data;
+                    size_t count = labelList.count;
+                    
+                    std::stringstream ss;
+                    ss << "{\"count\":" << std::dec << count << ",\"labels\":[";
+                    
+                    for (size_t i = 0; i < count; i++) {
+                        if (i > 0) ss << ",";
+                        ss << "{\"module\":\"" << escapeJsonString(labels[i].mod) << "\","
+                           << "\"rva\":\"0x" << std::hex << labels[i].rva << "\","
+                           << "\"text\":\"" << escapeJsonString(labels[i].text) << "\","
+                           << "\"manual\":" << (labels[i].manual ? "true" : "false") << "}";
+                    }
+                    
+                    ss << "]}";
+                    BridgeFree(labelList.data);
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                // =============================================================================
+                // COMMENT GET/SET ENDPOINTS
+                // =============================================================================
+                else if (path == "/Comment/Set") {
+                    std::string addrStr = queryParams["addr"];
+                    std::string text = queryParams["text"];
+                    if (!body.empty() && text.empty()) text = body;
+                    text = urlDecode(text);
+                    
+                    if (addrStr.empty() || text.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'addr' and 'text' parameters\"}");
+                        continue;
+                    }
+                    
+                    duint addr = 0;
+                    try {
+                        addr = std::stoull(addrStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid address format\"}");
+                        continue;
+                    }
+                    
+                    bool success = DbgSetCommentAt(addr, text.c_str());
+                    std::stringstream ss;
+                    ss << "{\"success\":" << (success ? "true" : "false") << ","
+                       << "\"address\":\"0x" << std::hex << addr << "\"}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                else if (path == "/Comment/Get") {
+                    std::string addrStr = queryParams["addr"];
+                    if (addrStr.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'addr' parameter\"}");
+                        continue;
+                    }
+                    
+                    duint addr = 0;
+                    try {
+                        addr = std::stoull(addrStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid address format\"}");
+                        continue;
+                    }
+                    
+                    char text[MAX_COMMENT_SIZE] = {0};
+                    bool found = DbgGetCommentAt(addr, text);
+                    
+                    std::stringstream ss;
+                    ss << "{\"address\":\"0x" << std::hex << addr << "\","
+                       << "\"found\":" << (found ? "true" : "false") << ","
+                       << "\"comment\":\"" << escapeJsonString(text) << "\"}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                // =============================================================================
+                // REGISTER DUMP ENDPOINT
+                // =============================================================================
+                else if (path == "/RegisterDump") {
+                    REGDUMP regdump;
+                    memset(&regdump, 0, sizeof(regdump));
+                    bool success = DbgGetRegDumpEx(&regdump, sizeof(regdump));
+                    
+                    if (!success) {
+                        sendHttpResponse(clientSocket, 500, "application/json",
+                            "{\"error\":\"Failed to get register dump\"}");
+                        continue;
+                    }
+                    
+                    std::stringstream ss;
+                    ss << "{";
+                    
+                    // General purpose registers
+                    ss << "\"cax\":\"0x" << std::hex << regdump.regcontext.cax << "\","
+                       << "\"ccx\":\"0x" << std::hex << regdump.regcontext.ccx << "\","
+                       << "\"cdx\":\"0x" << std::hex << regdump.regcontext.cdx << "\","
+                       << "\"cbx\":\"0x" << std::hex << regdump.regcontext.cbx << "\","
+                       << "\"csp\":\"0x" << std::hex << regdump.regcontext.csp << "\","
+                       << "\"cbp\":\"0x" << std::hex << regdump.regcontext.cbp << "\","
+                       << "\"csi\":\"0x" << std::hex << regdump.regcontext.csi << "\","
+                       << "\"cdi\":\"0x" << std::hex << regdump.regcontext.cdi << "\","
+#ifdef _WIN64
+                       << "\"r8\":\"0x" << std::hex << regdump.regcontext.r8 << "\","
+                       << "\"r9\":\"0x" << std::hex << regdump.regcontext.r9 << "\","
+                       << "\"r10\":\"0x" << std::hex << regdump.regcontext.r10 << "\","
+                       << "\"r11\":\"0x" << std::hex << regdump.regcontext.r11 << "\","
+                       << "\"r12\":\"0x" << std::hex << regdump.regcontext.r12 << "\","
+                       << "\"r13\":\"0x" << std::hex << regdump.regcontext.r13 << "\","
+                       << "\"r14\":\"0x" << std::hex << regdump.regcontext.r14 << "\","
+                       << "\"r15\":\"0x" << std::hex << regdump.regcontext.r15 << "\","
+#endif
+                       << "\"cip\":\"0x" << std::hex << regdump.regcontext.cip << "\","
+                       << "\"eflags\":\"0x" << std::hex << regdump.regcontext.eflags << "\","
+                    
+                    // Segment registers
+                       << "\"gs\":\"0x" << std::hex << regdump.regcontext.gs << "\","
+                       << "\"fs\":\"0x" << std::hex << regdump.regcontext.fs << "\","
+                       << "\"es\":\"0x" << std::hex << regdump.regcontext.es << "\","
+                       << "\"ds\":\"0x" << std::hex << regdump.regcontext.ds << "\","
+                       << "\"cs\":\"0x" << std::hex << regdump.regcontext.cs << "\","
+                       << "\"ss\":\"0x" << std::hex << regdump.regcontext.ss << "\","
+                    
+                    // Debug registers
+                       << "\"dr0\":\"0x" << std::hex << regdump.regcontext.dr0 << "\","
+                       << "\"dr1\":\"0x" << std::hex << regdump.regcontext.dr1 << "\","
+                       << "\"dr2\":\"0x" << std::hex << regdump.regcontext.dr2 << "\","
+                       << "\"dr3\":\"0x" << std::hex << regdump.regcontext.dr3 << "\","
+                       << "\"dr6\":\"0x" << std::hex << regdump.regcontext.dr6 << "\","
+                       << "\"dr7\":\"0x" << std::hex << regdump.regcontext.dr7 << "\","
+                    
+                    // Flags
+                       << "\"flags\":{"
+                       << "\"ZF\":" << (regdump.flags.z ? "true" : "false") << ","
+                       << "\"OF\":" << (regdump.flags.o ? "true" : "false") << ","
+                       << "\"CF\":" << (regdump.flags.c ? "true" : "false") << ","
+                       << "\"PF\":" << (regdump.flags.p ? "true" : "false") << ","
+                       << "\"SF\":" << (regdump.flags.s ? "true" : "false") << ","
+                       << "\"TF\":" << (regdump.flags.t ? "true" : "false") << ","
+                       << "\"AF\":" << (regdump.flags.a ? "true" : "false") << ","
+                       << "\"DF\":" << (regdump.flags.d ? "true" : "false") << ","
+                       << "\"IF\":" << (regdump.flags.i ? "true" : "false")
+                       << "},"
+                    
+                    // Last error/status
+                       << "\"lastError\":{\"code\":" << std::dec << regdump.lastError.code << ","
+                       << "\"name\":\"" << escapeJsonString(regdump.lastError.name) << "\"},"
+                       << "\"lastStatus\":{\"code\":" << std::dec << regdump.lastStatus.code << ","
+                       << "\"name\":\"" << escapeJsonString(regdump.lastStatus.name) << "\"}"
+                       << "}";
+                    
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                // =============================================================================
+                // HARDWARE BREAKPOINT ENDPOINTS
+                // =============================================================================
+                else if (path == "/Debug/SetHardwareBreakpoint") {
+                    std::string addrStr = queryParams["addr"];
+                    std::string typeStr = queryParams["type"]; // access, write, execute
+                    
+                    if (addrStr.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'addr' parameter\"}");
+                        continue;
+                    }
+                    
+                    duint addr = 0;
+                    try {
+                        addr = std::stoull(addrStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid address format\"}");
+                        continue;
+                    }
+                    
+                    Script::Debug::HardwareType hwType = Script::Debug::HardwareExecute;
+                    if (typeStr == "access") hwType = Script::Debug::HardwareAccess;
+                    else if (typeStr == "write") hwType = Script::Debug::HardwareWrite;
+                    else if (typeStr == "execute") hwType = Script::Debug::HardwareExecute;
+                    
+                    bool success = Script::Debug::SetHardwareBreakpoint(addr, hwType);
+                    std::stringstream ss;
+                    ss << "{\"success\":" << (success ? "true" : "false") << ","
+                       << "\"address\":\"0x" << std::hex << addr << "\"}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                else if (path == "/Debug/DeleteHardwareBreakpoint") {
+                    std::string addrStr = queryParams["addr"];
+                    if (addrStr.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'addr' parameter\"}");
+                        continue;
+                    }
+                    
+                    duint addr = 0;
+                    try {
+                        addr = std::stoull(addrStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid address format\"}");
+                        continue;
+                    }
+                    
+                    bool success = Script::Debug::DeleteHardwareBreakpoint(addr);
+                    std::stringstream ss;
+                    ss << "{\"success\":" << (success ? "true" : "false") << ","
+                       << "\"address\":\"0x" << std::hex << addr << "\"}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                // =============================================================================
+                // ENUM TCP CONNECTIONS ENDPOINT
+                // =============================================================================
+                else if (path == "/EnumTcpConnections") {
+                    const DBGFUNCTIONS* dbgFunc = DbgFunctions();
+                    if (!dbgFunc || !dbgFunc->EnumTcpConnections) {
+                        sendHttpResponse(clientSocket, 500, "application/json",
+                            "{\"error\":\"EnumTcpConnections not available\"}");
+                        continue;
+                    }
+                    
+                    ListInfo tcpList;
+                    bool success = dbgFunc->EnumTcpConnections(&tcpList);
+                    
+                    if (!success || tcpList.data == nullptr) {
+                        sendHttpResponse(clientSocket, 200, "application/json",
+                            "{\"count\":0,\"connections\":[]}");
+                        continue;
+                    }
+                    
+                    TCPCONNECTIONINFO* connections = (TCPCONNECTIONINFO*)tcpList.data;
+                    size_t count = tcpList.count;
+                    
+                    std::stringstream ss;
+                    ss << "{\"count\":" << std::dec << count << ",\"connections\":[";
+                    
+                    for (size_t i = 0; i < count; i++) {
+                        if (i > 0) ss << ",";
+                        ss << "{\"remoteAddress\":\"" << escapeJsonString(connections[i].RemoteAddress) << "\","
+                           << "\"remotePort\":" << std::dec << connections[i].RemotePort << ","
+                           << "\"localAddress\":\"" << escapeJsonString(connections[i].LocalAddress) << "\","
+                           << "\"localPort\":" << std::dec << connections[i].LocalPort << ","
+                           << "\"state\":\"" << escapeJsonString(connections[i].StateText) << "\"}";
+                    }
+                    
+                    ss << "]}";
+                    BridgeFree(tcpList.data);
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                // =============================================================================
+                // PATCH ENUM/GET ENDPOINTS
+                // =============================================================================
+                else if (path == "/Patch/List") {
+                    const DBGFUNCTIONS* dbgFunc = DbgFunctions();
+                    if (!dbgFunc || !dbgFunc->PatchEnum) {
+                        sendHttpResponse(clientSocket, 500, "application/json",
+                            "{\"error\":\"PatchEnum not available\"}");
+                        continue;
+                    }
+                    
+                    // First call to get size needed
+                    size_t cbsize = 0;
+                    dbgFunc->PatchEnum(nullptr, &cbsize);
+                    
+                    if (cbsize == 0) {
+                        sendHttpResponse(clientSocket, 200, "application/json",
+                            "{\"count\":0,\"patches\":[]}");
+                        continue;
+                    }
+                    
+                    size_t count = cbsize / sizeof(DBGPATCHINFO);
+                    std::vector<DBGPATCHINFO> patches(count);
+                    
+                    if (!dbgFunc->PatchEnum(patches.data(), &cbsize)) {
+                        sendHttpResponse(clientSocket, 500, "application/json",
+                            "{\"error\":\"PatchEnum failed\"}");
+                        continue;
+                    }
+                    
+                    std::stringstream ss;
+                    ss << "{\"count\":" << std::dec << count << ",\"patches\":[";
+                    
+                    for (size_t i = 0; i < count; i++) {
+                        if (i > 0) ss << ",";
+                        ss << "{\"module\":\"" << escapeJsonString(patches[i].mod) << "\","
+                           << "\"address\":\"0x" << std::hex << patches[i].addr << "\","
+                           << "\"oldByte\":\"0x" << std::hex << (int)patches[i].oldbyte << "\","
+                           << "\"newByte\":\"0x" << std::hex << (int)patches[i].newbyte << "\"}";
+                    }
+                    
+                    ss << "]}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                else if (path == "/Patch/Get") {
+                    std::string addrStr = queryParams["addr"];
+                    if (addrStr.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'addr' parameter\"}");
+                        continue;
+                    }
+                    
+                    duint addr = 0;
+                    try {
+                        addr = std::stoull(addrStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid address format\"}");
+                        continue;
+                    }
+                    
+                    const DBGFUNCTIONS* dbgFunc = DbgFunctions();
+                    if (!dbgFunc) {
+                        sendHttpResponse(clientSocket, 500, "application/json",
+                            "{\"error\":\"DbgFunctions not available\"}");
+                        continue;
+                    }
+                    
+                    DBGPATCHINFO patchInfo;
+                    memset(&patchInfo, 0, sizeof(patchInfo));
+                    bool found = false;
+                    
+                    if (dbgFunc->PatchGetEx) {
+                        found = dbgFunc->PatchGetEx(addr, &patchInfo);
+                    } else if (dbgFunc->PatchGet) {
+                        found = dbgFunc->PatchGet(addr);
+                    }
+                    
+                    std::stringstream ss;
+                    ss << "{\"address\":\"0x" << std::hex << addr << "\","
+                       << "\"patched\":" << (found ? "true" : "false");
+                    
+                    if (found && dbgFunc->PatchGetEx) {
+                        ss << ",\"module\":\"" << escapeJsonString(patchInfo.mod) << "\","
+                           << "\"oldByte\":\"0x" << std::hex << (int)patchInfo.oldbyte << "\","
+                           << "\"newByte\":\"0x" << std::hex << (int)patchInfo.newbyte << "\"";
+                    }
+                    
+                    ss << "}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                // =============================================================================
+                // ENUM HANDLES ENDPOINT
+                // =============================================================================
+                else if (path == "/EnumHandles") {
+                    const DBGFUNCTIONS* dbgFunc = DbgFunctions();
+                    if (!dbgFunc || !dbgFunc->EnumHandles) {
+                        sendHttpResponse(clientSocket, 500, "application/json",
+                            "{\"error\":\"EnumHandles not available\"}");
+                        continue;
+                    }
+                    
+                    ListInfo handleList;
+                    bool success = dbgFunc->EnumHandles(&handleList);
+                    
+                    if (!success || handleList.data == nullptr) {
+                        sendHttpResponse(clientSocket, 200, "application/json",
+                            "{\"count\":0,\"handles\":[]}");
+                        continue;
+                    }
+                    
+                    HANDLEINFO* handles = (HANDLEINFO*)handleList.data;
+                    size_t count = handleList.count;
+                    
+                    std::stringstream ss;
+                    ss << "{\"count\":" << std::dec << count << ",\"handles\":[";
+                    
+                    for (size_t i = 0; i < count; i++) {
+                        if (i > 0) ss << ",";
+                        
+                        // Try to get the handle name and type
+                        char handleName[256] = {0};
+                        char typeName[256] = {0};
+                        if (dbgFunc->GetHandleName) {
+                            dbgFunc->GetHandleName(handles[i].Handle, handleName, sizeof(handleName), typeName, sizeof(typeName));
+                        }
+                        
+                        ss << "{\"handle\":\"0x" << std::hex << handles[i].Handle << "\","
+                           << "\"typeNumber\":" << std::dec << (int)handles[i].TypeNumber << ","
+                           << "\"grantedAccess\":\"0x" << std::hex << handles[i].GrantedAccess << "\","
+                           << "\"name\":\"" << escapeJsonString(handleName) << "\","
+                           << "\"typeName\":\"" << escapeJsonString(typeName) << "\"}";
+                    }
+                    
+                    ss << "]}";
+                    BridgeFree(handleList.data);
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
                 
             }
             catch (const std::exception& e) {

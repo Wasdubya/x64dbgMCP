@@ -180,17 +180,24 @@ def _block_to_dict(block: Any) -> Dict[str, Any]:
 # =============================================================================
 
 @mcp.tool()
-def ExecCommand(cmd: str) -> str:
+def ExecCommand(cmd: str, offset: int = 0, limit: int = 100) -> dict:
     """
     Execute a command in x64dbg and return its output
     
     Parameters:
         cmd: Command to execute
+        offset: Pagination offset for reference view results (default: 0)
+        limit: Maximum number of reference view rows to return (default: 100, max: 5000)
     
     Returns:
-        Command execution status and output
+        Dictionary with:
+        - success: Whether the command executed successfully
+        - refView: References tab data populated by the command (if any), with:
+          - rowCount: Total number of rows in the references view
+          - rows: List of rows (paginated), where each row is a list of cell strings
+                  (typically [address, disassembly] or [address, disassembly, string_address, string])
     """
-    return safe_get("ExecCommand", {"cmd": cmd})
+    return safe_get("ExecCommand", {"cmd": cmd, "offset": offset, "limit": limit})
 
 # =============================================================================
 # DEBUGGING STATUS
@@ -832,6 +839,559 @@ def SetPageRights(addr: str, rights: str) -> bool:
             return result.strip().lower() in ("ok", "true", "success")
 
     return False
+
+# =============================================================================
+# STRING API
+# =============================================================================
+
+@mcp.tool()
+def StringGetAt(addr: str) -> dict:
+    """
+    Retrieve the string at a given address in the debugged process.
+    Uses x64dbg's internal string detection (same as the disassembly view).
+    
+    Parameters:
+        addr: Memory address (in hex format, e.g. "0x1400010a0")
+    
+    Returns:
+        Dictionary with:
+        - address: The queried address
+        - found: Whether a string was detected at that address
+        - string: The string content (empty if not found)
+    """
+    result = safe_get("String/GetAt", {"addr": addr})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+# =============================================================================
+# XREF (CROSS-REFERENCE) API
+# =============================================================================
+
+@mcp.tool()
+def XrefGet(addr: str) -> dict:
+    """
+    Get all cross-references (xrefs) TO the specified address.
+    Returns the list of addresses that reference the target address,
+    along with the type of each reference (data, jmp, call).
+    
+    Note: Results depend on x64dbg's analysis database. Run analysis
+    first for comprehensive results.
+    
+    Parameters:
+        addr: Target address to find references to (hex format, e.g. "0x1400010a0")
+    
+    Returns:
+        Dictionary with:
+        - address: The queried target address
+        - refcount: Number of cross-references found
+        - references: List of reference objects, each with:
+          - addr: Address of the referrer (the instruction that references the target)
+          - type: Reference type ("data", "jmp", "call", or "none")
+          - string: Optional string context at the referrer address
+    """
+    result = safe_get("Xref/Get", {"addr": addr})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+@mcp.tool()
+def XrefCount(addr: str) -> dict:
+    """
+    Get the count of cross-references to the specified address.
+    This is a lightweight check that doesn't fetch the full reference list.
+    
+    Parameters:
+        addr: Target address to count references for (hex format, e.g. "0x1400010a0")
+    
+    Returns:
+        Dictionary with:
+        - address: The queried address
+        - count: Number of cross-references
+    """
+    result = safe_get("Xref/Count", {"addr": addr})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+# =============================================================================
+# MEMORY MAP API
+# =============================================================================
+
+@mcp.tool()
+def GetMemoryMap() -> dict:
+    """
+    Get the full virtual memory map of the debugged process.
+    Returns all memory pages with their base address, size, protection, type, and info.
+    
+    Returns:
+        Dictionary with:
+        - count: Number of memory pages
+        - pages: List of page objects with base, size, protect (ERW/ER-/-RW/-R-/E--/---),
+          type (IMG/MAP/PRV), and info (module name or description)
+    """
+    result = safe_get("MemoryMap")
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+# =============================================================================
+# REMOTE MEMORY ALLOC/FREE API
+# =============================================================================
+
+@mcp.tool()
+def MemoryRemoteAlloc(size: str, addr: str = "0") -> dict:
+    """
+    Allocate memory in the debuggee's address space.
+    Useful for code injection, shellcode testing, or creating data buffers.
+    
+    Parameters:
+        size: Size in bytes to allocate (hex format, e.g. "0x1000")
+        addr: Preferred base address (hex format, default "0" for any address)
+    
+    Returns:
+        Dictionary with:
+        - address: The allocated memory address
+        - size: The requested size
+    """
+    result = safe_get("Memory/RemoteAlloc", {"addr": addr, "size": size})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+@mcp.tool()
+def MemoryRemoteFree(addr: str) -> dict:
+    """
+    Free memory previously allocated in the debuggee's address space via MemoryRemoteAlloc.
+    
+    Parameters:
+        addr: Address of the memory to free (hex format, e.g. "0x1000")
+    
+    Returns:
+        Dictionary with success status
+    """
+    result = safe_get("Memory/RemoteFree", {"addr": addr})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+# =============================================================================
+# BRANCH DESTINATION API
+# =============================================================================
+
+@mcp.tool()
+def GetBranchDestination(addr: str) -> dict:
+    """
+    Get the destination address of a branch instruction (jmp, call, jcc, etc.).
+    Resolves where the branch at the given address would jump/call to.
+    
+    Parameters:
+        addr: Address of the branch instruction (hex format, e.g. "0x1400010a0")
+    
+    Returns:
+        Dictionary with:
+        - address: The queried instruction address
+        - destination: The resolved target address
+        - resolved: Whether the destination was successfully resolved
+    """
+    result = safe_get("GetBranchDestination", {"addr": addr})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+# =============================================================================
+# CALL STACK API
+# =============================================================================
+
+@mcp.tool()
+def GetCallStack() -> dict:
+    """
+    Get the current call stack of the debugged thread.
+    Returns the full stack trace with addresses, return addresses, and comments.
+    
+    Returns:
+        Dictionary with:
+        - total: Number of stack frames
+        - entries: List of call stack entries, each with:
+          - addr: Current address in the frame
+          - from: Return address (caller)
+          - to: Called address (callee)
+          - comment: Auto-generated comment (function name, etc.)
+    """
+    result = safe_get("GetCallStack")
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+# =============================================================================
+# BREAKPOINT LIST API
+# =============================================================================
+
+@mcp.tool()
+def GetBreakpointList(type: str = "all") -> dict:
+    """
+    Get list of all breakpoints currently set in the debugger.
+    
+    Parameters:
+        type: Breakpoint type filter - "all" (default), "normal", "hardware", "memory", "dll", "exception"
+    
+    Returns:
+        Dictionary with:
+        - count: Number of breakpoints
+        - breakpoints: List of breakpoint objects with type, addr, enabled, singleshoot,
+          active, name, module, hitCount, fastResume, silent, breakCondition, logText, commandText
+    """
+    result = safe_get("Breakpoint/List", {"type": type})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+# =============================================================================
+# LABEL API
+# =============================================================================
+
+@mcp.tool()
+def LabelSet(addr: str, text: str) -> dict:
+    """
+    Set a label at the specified address in x64dbg.
+    Labels appear in the disassembly view and are useful for marking important addresses.
+    
+    Parameters:
+        addr: Address to set the label at (hex format, e.g. "0x1400010a0")
+        text: Label text (e.g. "main_decrypt_loop")
+    
+    Returns:
+        Dictionary with success status, address, and label text
+    """
+    result = safe_get("Label/Set", {"addr": addr, "text": text})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+@mcp.tool()
+def LabelGet(addr: str) -> dict:
+    """
+    Get the label at the specified address.
+    
+    Parameters:
+        addr: Address to query (hex format, e.g. "0x1400010a0")
+    
+    Returns:
+        Dictionary with:
+        - address: The queried address
+        - found: Whether a label exists at that address
+        - label: The label text (empty if not found)
+    """
+    result = safe_get("Label/Get", {"addr": addr})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+@mcp.tool()
+def LabelList() -> dict:
+    """
+    Get all labels defined in the current debugging session.
+    
+    Returns:
+        Dictionary with:
+        - count: Number of labels
+        - labels: List of label objects with module, rva, text, and manual fields
+    """
+    result = safe_get("Label/List")
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+# =============================================================================
+# COMMENT API
+# =============================================================================
+
+@mcp.tool()
+def CommentSet(addr: str, text: str) -> dict:
+    """
+    Set a comment at the specified address in x64dbg.
+    Comments appear in the disassembly view next to the instruction.
+    
+    Parameters:
+        addr: Address to set the comment at (hex format, e.g. "0x1400010a0")
+        text: Comment text
+    
+    Returns:
+        Dictionary with success status and address
+    """
+    result = safe_get("Comment/Set", {"addr": addr, "text": text})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+@mcp.tool()
+def CommentGet(addr: str) -> dict:
+    """
+    Get the comment at the specified address.
+    
+    Parameters:
+        addr: Address to query (hex format, e.g. "0x1400010a0")
+    
+    Returns:
+        Dictionary with:
+        - address: The queried address
+        - found: Whether a comment exists
+        - comment: The comment text
+    """
+    result = safe_get("Comment/Get", {"addr": addr})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+# =============================================================================
+# REGISTER DUMP API
+# =============================================================================
+
+@mcp.tool()
+def GetRegisterDump() -> dict:
+    """
+    Get a complete dump of all CPU registers in one call.
+    Returns general purpose registers, segment registers, debug registers,
+    flags, and last error/status information.
+    
+    Much more efficient than reading registers individually.
+    
+    Returns:
+        Dictionary with all register values (cax/ccx/cdx/cbx/csp/cbp/csi/cdi,
+        r8-r15 on x64, cip, eflags, segment regs, debug regs, flags object,
+        lastError, lastStatus)
+    """
+    result = safe_get("RegisterDump")
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+# =============================================================================
+# HARDWARE BREAKPOINT API
+# =============================================================================
+
+@mcp.tool()
+def SetHardwareBreakpoint(addr: str, type: str = "execute") -> dict:
+    """
+    Set a hardware breakpoint at the specified address.
+    Hardware breakpoints use CPU debug registers (limited to 4 simultaneous).
+    
+    Parameters:
+        addr: Address to set the breakpoint at (hex format, e.g. "0x1400010a0")
+        type: Breakpoint type - "execute" (default), "access" (read/write), or "write" (write only)
+    
+    Returns:
+        Dictionary with success status and address
+    """
+    result = safe_get("Debug/SetHardwareBreakpoint", {"addr": addr, "type": type})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+@mcp.tool()
+def DeleteHardwareBreakpoint(addr: str) -> dict:
+    """
+    Delete a hardware breakpoint at the specified address.
+    
+    Parameters:
+        addr: Address of the hardware breakpoint to delete (hex format)
+    
+    Returns:
+        Dictionary with success status and address
+    """
+    result = safe_get("Debug/DeleteHardwareBreakpoint", {"addr": addr})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+# =============================================================================
+# TCP CONNECTIONS API
+# =============================================================================
+
+@mcp.tool()
+def EnumTcpConnections() -> dict:
+    """
+    Enumerate all TCP connections of the debugged process.
+    Useful for analyzing network activity, identifying C2 connections, etc.
+    
+    Returns:
+        Dictionary with:
+        - count: Number of connections
+        - connections: List of connection objects with remoteAddress, remotePort,
+          localAddress, localPort, and state
+    """
+    result = safe_get("EnumTcpConnections")
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+# =============================================================================
+# PATCH API
+# =============================================================================
+
+@mcp.tool()
+def GetPatchList() -> dict:
+    """
+    Enumerate all memory patches applied in the current debugging session.
+    Shows original and patched byte values for each patched address.
+    
+    Returns:
+        Dictionary with:
+        - count: Number of patches
+        - patches: List of patch objects with module, address, oldByte, newByte
+    """
+    result = safe_get("Patch/List")
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+@mcp.tool()
+def GetPatchAt(addr: str) -> dict:
+    """
+    Check if a specific address has been patched and get patch details.
+    
+    Parameters:
+        addr: Address to check (hex format, e.g. "0x1400010a0")
+    
+    Returns:
+        Dictionary with:
+        - address: The queried address
+        - patched: Whether the address is patched
+        - module: Module name (if patched)
+        - oldByte: Original byte value (if patched)
+        - newByte: Patched byte value (if patched)
+    """
+    result = safe_get("Patch/Get", {"addr": addr})
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
+
+# =============================================================================
+# HANDLE ENUMERATION API
+# =============================================================================
+
+@mcp.tool()
+def EnumHandles() -> dict:
+    """
+    Enumerate all open handles in the debugged process.
+    Returns handle values, types, access rights, names, and type names.
+    Useful for analyzing file handles, registry keys, mutexes, events, etc.
+    
+    Returns:
+        Dictionary with:
+        - count: Number of handles
+        - handles: List of handle objects with handle (hex), typeNumber,
+          grantedAccess (hex), name, and typeName
+    """
+    result = safe_get("EnumHandles")
+    if isinstance(result, dict):
+        return result
+    elif isinstance(result, str):
+        try:
+            return json.loads(result)
+        except:
+            return {"error": "Failed to parse response", "raw": result}
+    return {"error": "Unexpected response format"}
 
 import argparse
 
