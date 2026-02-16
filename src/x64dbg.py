@@ -283,8 +283,8 @@ def MemoryRead(addr: str, size: str) -> str:
     Read memory using enhanced Script API
     
     Parameters:
-        addr: Memory address (in hex format, e.g. "0x1000")
-        size: Number of bytes to read
+        addr: Memory address in hex, with or without "0x" prefix (e.g. "0x1000" or "1000")
+        size: Number of bytes to read (decimal or "0x" prefixed hex)
     
     Returns:
         Hexadecimal string representing the memory contents

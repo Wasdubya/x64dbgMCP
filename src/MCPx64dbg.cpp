@@ -39,6 +39,7 @@
 #include <memory>
 #include <fstream>
 #include <cctype>
+#include <limits>
 // Link with ws2_32.lib
 #pragma comment(lib, "ws2_32.lib")
 
@@ -90,6 +91,8 @@ void parseHttpRequest(const std::string& request, std::string& method, std::stri
 std::unordered_map<std::string, std::string> parseQueryParams(const std::string& query);
 std::string urlDecode(const std::string& str);
 std::string escapeJsonString(const char* str);
+bool parseHexDuint(const std::string& input, duint& out);
+bool parseAutoDuint(const std::string& input, duint& out);
 
 // Command callback declarations
 bool cbEnableHttpServer(int argc, char* argv[]);
@@ -243,6 +246,49 @@ std::string escapeJsonString(const char* str) {
         str++;
     }
     return result;
+}
+
+static std::string trimAscii(const std::string& input) {
+    size_t start = input.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) {
+        return "";
+    }
+    size_t end = input.find_last_not_of(" \t\r\n");
+    return input.substr(start, end - start + 1);
+}
+
+static bool parseDuintWithBase(const std::string& input, int base, duint& out) {
+    std::string token = trimAscii(input);
+    if (token.empty()) {
+        return false;
+    }
+
+    try {
+        size_t pos = 0;
+        unsigned long long value = std::stoull(token, &pos, base);
+        if (pos != token.size()) {
+            return false;
+        }
+        if (value > static_cast<unsigned long long>((std::numeric_limits<duint>::max)())) {
+            return false;
+        }
+        out = static_cast<duint>(value);
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+bool parseHexDuint(const std::string& input, duint& out) {
+    std::string token = trimAscii(input);
+    if (token.size() >= 2 && token[0] == '0' && (token[1] == 'x' || token[1] == 'X')) {
+        token = token.substr(2);
+    }
+    return parseDuintWithBase(token, 16, out);
+}
+
+bool parseAutoDuint(const std::string& input, duint& out) {
+    return parseDuintWithBase(input, 0, out);
 }
 
 // HTTP server thread function using standard Winsock
@@ -584,14 +630,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     
                     duint addr = 0;
                     duint size = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                        size = std::stoull(sizeStr, nullptr, 10);
-                    } catch (const std::exception& e) {
+                    if (!parseHexDuint(addrStr, addr) || !parseAutoDuint(sizeStr, size)) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address or size format");
                         continue;
                     }
@@ -626,13 +665,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     }
                     
                     duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
+                    if (!parseHexDuint(addrStr, addr)) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
                         continue;
                     }
@@ -663,13 +696,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     }
                     
                     duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
+                    if (!parseHexDuint(addrStr, addr)) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
                         continue;
                     }
@@ -685,13 +712,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     }
                     
                     duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
+                    if (!parseHexDuint(addrStr, addr)) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
                         continue;
                     }
