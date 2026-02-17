@@ -387,55 +387,62 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         if (refLimit > 5000) refLimit = 5000;
                     }
 
-                    int totalRows = refChanged ? refRowCountAfter : 0;
+                    // If the command failed, return a simple error without refView data
+                    if (!success) {
+                        std::stringstream ss;
+                        ss << "{\"success\":false,\"refView\":{\"rowCount\":0,\"rows\":[]}}";
+                        sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                    } else {
+                        int totalRows = refChanged ? refRowCountAfter : 0;
 
-                    std::stringstream ss;
-                    ss << "{";
-                    ss << "\"success\":" << (success ? "true" : "false") << ",";
-                    ss << "\"refView\":{";
-                    ss << "\"rowCount\":" << totalRows << ",";
-                    ss << "\"rows\":[";
+                        std::stringstream ss;
+                        ss << "{";
+                        ss << "\"success\":true,";
+                        ss << "\"refView\":{";
+                        ss << "\"rowCount\":" << totalRows << ",";
+                        ss << "\"rows\":[";
 
-                    if (totalRows > 0) {
-                        // Clamp offset/limit to actual data range
-                        if (refOffset >= totalRows) refOffset = totalRows;
-                        int endRow = refOffset + refLimit;
-                        if (endRow > totalRows) endRow = totalRows;
+                        if (totalRows > 0) {
+                            // Clamp offset/limit to actual data range
+                            if (refOffset >= totalRows) refOffset = totalRows;
+                            int endRow = refOffset + refLimit;
+                            if (endRow > totalRows) endRow = totalRows;
 
-                        // Determine column count by probing the first row (up to 10 columns)
-                        int numCols = 0;
-                        for (int c = 0; c < 10; c++) {
-                            char* cell = GuiReferenceGetCellContent(0, c);
-                            if (cell) {
-                                if (cell[0] != '\0') {
-                                    numCols = c + 1;
-                                }
-                                BridgeFree(cell);
-                            }
-                        }
-                        if (numCols < 2) numCols = 2;
-
-                        bool firstRow = true;
-                        for (int row = refOffset; row < endRow; row++) {
-                            if (!firstRow) ss << ",";
-                            firstRow = false;
-                            ss << "[";
-                            for (int col = 0; col < numCols; col++) {
-                                if (col > 0) ss << ",";
-                                char* cell = GuiReferenceGetCellContent(row, col);
+                            // Determine column count by probing the first row (up to 10 columns)
+                            int numCols = 0;
+                            for (int c = 0; c < 10; c++) {
+                                char* cell = GuiReferenceGetCellContent(0, c);
                                 if (cell) {
-                                    ss << "\"" << escapeJsonString(cell) << "\"";
+                                    if (cell[0] != '\0') {
+                                        numCols = c + 1;
+                                    }
                                     BridgeFree(cell);
-                                } else {
-                                    ss << "\"\"";
                                 }
                             }
-                            ss << "]";
-                        }
-                    }
+                            if (numCols < 2) numCols = 2;
 
-                    ss << "]}}";
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "application/json", ss.str());
+                            bool firstRow = true;
+                            for (int row = refOffset; row < endRow; row++) {
+                                if (!firstRow) ss << ",";
+                                firstRow = false;
+                                ss << "[";
+                                for (int col = 0; col < numCols; col++) {
+                                    if (col > 0) ss << ",";
+                                    char* cell = GuiReferenceGetCellContent(row, col);
+                                    if (cell) {
+                                        ss << "\"" << escapeJsonString(cell) << "\"";
+                                        BridgeFree(cell);
+                                    } else {
+                                        ss << "\"\"";
+                                    }
+                                }
+                                ss << "]";
+                            }
+                        }
+
+                        ss << "]}}";
+                        sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                    }
                 }
                                 else if (path == "/IsDebugActive") {
                     bool isRunning = DbgIsRunning();
