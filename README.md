@@ -88,6 +88,5 @@
   - If you do not provide the model you are working with context of where your exe is, it wont have the capabiltiy to restart the binary if it crashes or hangs. So, provide it with the full path of the binary so it can call the CMDEXEC function like "init C:\Absolute\Path\to\EXE".
   - GetModuleBase is the best place to start for models so it will query for the right addresses, x64dbg will not respond to addresses out of range.
 <br>
-<br>
-🧀**Enjoy Automated Debugging**🛎️
-In my opinion, this is currently the best free dynamic analysis tool combined with latest LLMS. Try it out.
+
+🧀 **Enjoy Automated Debugging** 🛎️
