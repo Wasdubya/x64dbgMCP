@@ -27,7 +27,7 @@
 - Removed log redirection upon the discovery of the GuiReferenceGetRowCount & GuiReferenceGetCellContent, with pagination.
 <h2> Quick Setup </h2
 
- -Ensure python dependencies are installed w/ '''pip install mcp requests'''
+ -Ensure python dependencies are installed w/ ```pip install mcp requests```
 
 1. **Download Plugin**
    - Grab .dp64 or .dp32 from this repo's build/release directory
