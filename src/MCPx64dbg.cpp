@@ -632,17 +632,15 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    duint size = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                        size = std::stoull(sizeStr, nullptr, 10);
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address or size format");
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
+                        continue;
+                    }
+                    auto [sizeOk, size] = parseNumber(sizeStr, parseError);
+                    if (!sizeOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
                         continue;
                     }
                     
