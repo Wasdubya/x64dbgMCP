@@ -637,7 +637,7 @@ def DisasmGetInstructionRange(addr: str, count: int = 1) -> list:
 
     Parameters:
         addr: Memory address in hex (e.g. "0x1000" or "1000")
-        count: Number of instructions to disassemble (default: 1, max: 100)
+        count: Number of instructions to disassemble, decimal or hex with 0x prefix (default: 1, max: 100)
     
     Returns:
         List of dictionaries containing instruction details
@@ -1252,7 +1252,7 @@ def SetHardwareBreakpoint(addr: str, type: str = "execute") -> dict:
     Hardware breakpoints use CPU debug registers (limited to 4 simultaneous).
     
     Parameters:
-        addr: Address to set the breakpoint at (hex format, e.g. "0x1400010a0")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
         type: Breakpoint type - "execute" (default), "access" (read/write), or "write" (write only)
     
     Returns:
@@ -1274,7 +1274,7 @@ def DeleteHardwareBreakpoint(addr: str) -> dict:
     Delete a hardware breakpoint at the specified address.
     
     Parameters:
-        addr: Address of the hardware breakpoint to delete (hex format)
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
     
     Returns:
         Dictionary with success status and address
@@ -1346,7 +1346,7 @@ def GetPatchAt(addr: str) -> dict:
     Check if a specific address has been patched and get patch details.
     
     Parameters:
-        addr: Address to check (hex format, e.g. "0x1400010a0")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
     
     Returns:
         Dictionary with:
