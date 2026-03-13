@@ -1,0 +1,73 @@
+# =========================
+# CMake / Build
+# =========================
+build/
+out/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.vcxproj.user
+
+# =========================
+# Visual Studio / MSVC
+# =========================
+.vs/
+*.suo
+*.sdf
+*.opensdf
+*.opendb
+*.pdb
+*.ilk
+*.exp
+*.iobj
+*.ipdb
+*.log
+*.tlog
+Debug/
+Release/
+x64/
+x86/
+
+# =========================
+# C++ Build Artifacts
+# =========================
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.dp32
+*.dp64
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+*.egg
+.python-version
+
+# =========================
+# IDE / Editor
+# =========================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# =========================
+# OS
+# =========================
+Thumbs.db
+Desktop.ini
+.DS_Store
