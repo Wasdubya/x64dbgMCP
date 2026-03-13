@@ -426,11 +426,11 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     int refOffset = 0;
                     int refLimit = 100;  // default page size
                     if (!queryParams["offset"].empty()) {
-                        try { refOffset = std::stoi(queryParams["offset"]); } catch (...) {}
+                        { std::string pe; auto [ok, v] = parseNumber(queryParams["offset"], pe); if (ok) refOffset = static_cast<int>(v); }
                         if (refOffset < 0) refOffset = 0;
                     }
                     if (!queryParams["limit"].empty()) {
-                        try { refLimit = std::stoi(queryParams["limit"]); } catch (...) {}
+                        { std::string pe; auto [ok, v] = parseNumber(queryParams["limit"], pe); if (ok) refLimit = static_cast<int>(v); }
                         if (refLimit < 1) refLimit = 1;
                         if (refLimit > 5000) refLimit = 5000;
                     }
@@ -1147,12 +1147,10 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     }
                     _plugin_logprintf("MemoryBase endpoint called with addr: %s\n", addrStr.c_str());
                     // Convert string address to duint
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16); // Parse as hex
-                    }
-                    catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
                         continue;
                     }
                     _plugin_logprintf("Converted address: " FMT_DUINT_HEX "\n", DUINT_CAST_PRINTF(addr));
@@ -1233,10 +1231,10 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     int limit = 5000;
                     
                     if (!offsetStr.empty()) {
-                        try { offset = std::stoi(offsetStr); } catch (...) { offset = 0; }
+                        { std::string pe; auto [ok, v] = parseNumber(offsetStr, pe); if (ok) offset = static_cast<int>(v); }
                     }
                     if (!limitStr.empty()) {
-                        try { limit = std::stoi(limitStr); } catch (...) { limit = 5000; }
+                        { std::string pe; auto [ok, v] = parseNumber(limitStr, pe); if (ok) limit = static_cast<int>(v); }
                     }
                     
                     // Clamp values
@@ -1420,11 +1418,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     }
                     
                     DWORD tid = 0;
-                    try {
-                        tid = (DWORD)std::stoul(tidStr, nullptr, 0);
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid tid format");
-                        continue;
+                    {
+                        std::string parseError;
+                        auto [tidOk, tidVal] = parseNumber(tidStr, parseError);
+                        if (!tidOk) {
+                            sendHttpResponse(clientSocket, 400, "application/json", "{\"error\":\"" + parseError + "\"}");
+                            continue;
+                        }
+                        tid = (DWORD)tidVal;
                     }
                     
                     duint tebAddr = DbgGetTebAddress(tid);
@@ -1450,15 +1451,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16);
-                    } catch (const std::exception& e) {
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
                         sendHttpResponse(clientSocket, 400, "application/json",
-                            "{\"error\":\"Invalid address format\"}");
+                            "{\"error\":\"" + parseError + "\"}");
                         continue;
                     }
-                    
+
                     char text[MAX_STRING_SIZE] = {0};
                     bool found = DbgGetStringAt(addr, text);
                     
@@ -1479,15 +1479,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16);
-                    } catch (const std::exception& e) {
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
                         sendHttpResponse(clientSocket, 400, "application/json",
-                            "{\"error\":\"Invalid address format\"}");
+                            "{\"error\":\"" + parseError + "\"}");
                         continue;
                     }
-                    
+
                     XREF_INFO xrefInfo = {0};
                     bool success = DbgXrefGet(addr, &xrefInfo);
                     
@@ -1537,15 +1536,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16);
-                    } catch (const std::exception& e) {
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
                         sendHttpResponse(clientSocket, 400, "application/json",
-                            "{\"error\":\"Invalid address format\"}");
+                            "{\"error\":\"" + parseError + "\"}");
                         continue;
                     }
-                    
+
                     size_t count = DbgGetXrefCountAt(addr);
                     
                     std::stringstream ss;
@@ -1616,13 +1614,20 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     }
                     
                     duint addr = 0;
-                    duint size = 0;
-                    try {
-                        if (!addrStr.empty()) addr = std::stoull(addrStr, nullptr, 16);
-                        size = std::stoull(sizeStr, nullptr, 16);
-                    } catch (const std::exception& e) {
+                    std::string parseError;
+                    if (!addrStr.empty()) {
+                        auto [addrOk, addrVal] = parseAddress(addrStr, parseError);
+                        if (!addrOk) {
+                            sendHttpResponse(clientSocket, 400, "application/json",
+                                "{\"error\":\"" + parseError + "\"}");
+                            continue;
+                        }
+                        addr = addrVal;
+                    }
+                    auto [sizeOk, size] = parseNumber(sizeStr, parseError);
+                    if (!sizeOk) {
                         sendHttpResponse(clientSocket, 400, "application/json",
-                            "{\"error\":\"Invalid parameter format\"}");
+                            "{\"error\":\"" + parseError + "\"}");
                         continue;
                     }
                     
@@ -1646,15 +1651,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16);
-                    } catch (const std::exception& e) {
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
                         sendHttpResponse(clientSocket, 400, "application/json",
-                            "{\"error\":\"Invalid address format\"}");
+                            "{\"error\":\"" + parseError + "\"}");
                         continue;
                     }
-                    
+
                     bool success = Script::Memory::RemoteFree(addr);
                     std::stringstream ss;
                     ss << "{\"success\":" << (success ? "true" : "false") << "}";
@@ -1671,15 +1675,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16);
-                    } catch (const std::exception& e) {
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
                         sendHttpResponse(clientSocket, 400, "application/json",
-                            "{\"error\":\"Invalid address format\"}");
+                            "{\"error\":\"" + parseError + "\"}");
                         continue;
                     }
-                    
+
                     duint dest = DbgGetBranchDestination(addr);
                     
                     std::stringstream ss;
@@ -1806,15 +1809,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16);
-                    } catch (const std::exception& e) {
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
                         sendHttpResponse(clientSocket, 400, "application/json",
-                            "{\"error\":\"Invalid address format\"}");
+                            "{\"error\":\"" + parseError + "\"}");
                         continue;
                     }
-                    
+
                     bool success = DbgSetLabelAt(addr, text.c_str());
                     std::stringstream ss;
                     ss << "{\"success\":" << (success ? "true" : "false") << ","
@@ -1830,15 +1832,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16);
-                    } catch (const std::exception& e) {
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
                         sendHttpResponse(clientSocket, 400, "application/json",
-                            "{\"error\":\"Invalid address format\"}");
+                            "{\"error\":\"" + parseError + "\"}");
                         continue;
                     }
-                    
+
                     char text[MAX_LABEL_SIZE] = {0};
                     bool found = DbgGetLabelAt(addr, SEG_DEFAULT, text);
                     
@@ -1891,15 +1892,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16);
-                    } catch (const std::exception& e) {
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
                         sendHttpResponse(clientSocket, 400, "application/json",
-                            "{\"error\":\"Invalid address format\"}");
+                            "{\"error\":\"" + parseError + "\"}");
                         continue;
                     }
-                    
+
                     bool success = DbgSetCommentAt(addr, text.c_str());
                     std::stringstream ss;
                     ss << "{\"success\":" << (success ? "true" : "false") << ","
@@ -1914,15 +1914,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16);
-                    } catch (const std::exception& e) {
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
                         sendHttpResponse(clientSocket, 400, "application/json",
-                            "{\"error\":\"Invalid address format\"}");
+                            "{\"error\":\"" + parseError + "\"}");
                         continue;
                     }
-                    
+
                     char text[MAX_COMMENT_SIZE] = {0};
                     bool found = DbgGetCommentAt(addr, text);
                     
@@ -2022,15 +2021,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16);
-                    } catch (const std::exception& e) {
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
                         sendHttpResponse(clientSocket, 400, "application/json",
-                            "{\"error\":\"Invalid address format\"}");
+                            "{\"error\":\"" + parseError + "\"}");
                         continue;
                     }
-                    
+
                     Script::Debug::HardwareType hwType = Script::Debug::HardwareExecute;
                     if (typeStr == "access") hwType = Script::Debug::HardwareAccess;
                     else if (typeStr == "write") hwType = Script::Debug::HardwareWrite;
@@ -2050,15 +2048,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16);
-                    } catch (const std::exception& e) {
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
                         sendHttpResponse(clientSocket, 400, "application/json",
-                            "{\"error\":\"Invalid address format\"}");
+                            "{\"error\":\"" + parseError + "\"}");
                         continue;
                     }
-                    
+
                     bool success = Script::Debug::DeleteHardwareBreakpoint(addr);
                     std::stringstream ss;
                     ss << "{\"success\":" << (success ? "true" : "false") << ","
@@ -2156,15 +2153,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        addr = std::stoull(addrStr, nullptr, 16);
-                    } catch (const std::exception& e) {
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
                         sendHttpResponse(clientSocket, 400, "application/json",
-                            "{\"error\":\"Invalid address format\"}");
+                            "{\"error\":\"" + parseError + "\"}");
                         continue;
                     }
-                    
+
                     const DBGFUNCTIONS* dbgFunc = DbgFunctions();
                     if (!dbgFunc) {
                         sendHttpResponse(clientSocket, 500, "application/json",
