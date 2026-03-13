@@ -263,10 +263,10 @@ def RegisterGet(register: str) -> str:
 def RegisterSet(register: str, value: str) -> str:
     """
     Set register value using Script API
-    
+
     Parameters:
         register: Register name (e.g. "eax", "rax", "rip")
-        value: Value to set (in hex format, e.g. "0x1000")
+        value: Value in hex (e.g. "0xFF" or "FF")
     
     Returns:
         Status message
@@ -283,8 +283,8 @@ def MemoryRead(addr: str, size: str) -> str:
     Read memory using enhanced Script API
     
     Parameters:
-        addr: Memory address (in hex format, e.g. "0x1000")
-        size: Number of bytes to read
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
+        size: Number of bytes to read, decimal or hex with 0x prefix (e.g. "32" or "0x20")
     
     Returns:
         Hexadecimal string representing the memory contents
@@ -295,9 +295,9 @@ def MemoryRead(addr: str, size: str) -> str:
 def MemoryWrite(addr: str, data: str) -> str:
     """
     Write memory using enhanced Script API
-    
+
     Parameters:
-        addr: Memory address (in hex format, e.g. "0x1000")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
         data: Hexadecimal string representing the data to write
     
     Returns:
@@ -309,9 +309,9 @@ def MemoryWrite(addr: str, data: str) -> str:
 def MemoryIsValidPtr(addr: str) -> bool:
     """
     Check if memory address is valid
-    
+
     Parameters:
-        addr: Memory address (in hex format, e.g. "0x1000")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
     
     Returns:
         True if valid, False otherwise
@@ -325,9 +325,9 @@ def MemoryIsValidPtr(addr: str) -> bool:
 def MemoryGetProtect(addr: str) -> str:
     """
     Get memory protection flags
-    
+
     Parameters:
-        addr: Memory address (in hex format, e.g. "0x1000")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
     
     Returns:
         Protection flags in hex format
@@ -402,9 +402,9 @@ def DebugStepOut() -> str:
 def DebugSetBreakpoint(addr: str) -> str:
     """
     Set breakpoint at address using Script API
-    
+
     Parameters:
-        addr: Memory address (in hex format, e.g. "0x1000")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
     
     Returns:
         Status message
@@ -415,9 +415,9 @@ def DebugSetBreakpoint(addr: str) -> str:
 def DebugDeleteBreakpoint(addr: str) -> str:
     """
     Delete breakpoint at address using Script API
-    
+
     Parameters:
-        addr: Memory address (in hex format, e.g. "0x1000")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
     
     Returns:
         Status message
@@ -432,9 +432,9 @@ def DebugDeleteBreakpoint(addr: str) -> str:
 def AssemblerAssemble(addr: str, instruction: str) -> dict:
     """
     Assemble instruction at address using Script API
-    
+
     Parameters:
-        addr: Memory address (in hex format, e.g. "0x1000")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
         instruction: Assembly instruction (e.g. "mov eax, 1")
     
     Returns:
@@ -454,9 +454,9 @@ def AssemblerAssemble(addr: str, instruction: str) -> dict:
 def AssemblerAssembleMem(addr: str, instruction: str) -> str:
     """
     Assemble instruction directly into memory using Script API
-    
+
     Parameters:
-        addr: Memory address (in hex format, e.g. "0x1000")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
         instruction: Assembly instruction (e.g. "mov eax, 1")
     
     Returns:
@@ -484,7 +484,7 @@ def StackPush(value: str) -> str:
     Push value to stack using Script API
     
     Parameters:
-        value: Value to push (in hex format, e.g. "0x1000")
+        value: Value in hex (e.g. "0x1000" or "1000")
     
     Returns:
         Previous top value in hex format
@@ -548,8 +548,8 @@ def PatternFindMem(start: str, size: str, pattern: str) -> str:
     Find pattern in memory using Script API
     
     Parameters:
-        start: Start address (in hex format, e.g. "0x1000")
-        size: Size to search
+        start: Start address in hex (e.g. "0x1000" or "1000")
+        size: Size to search, decimal or hex with 0x prefix (e.g. "4096" or "0x1000")
         pattern: Pattern to find (e.g. "48 8B 05 ? ? ? ?")
     
     Returns:
@@ -613,9 +613,9 @@ def SetRegister(name: str, value: str) -> str:
 def DisasmGetInstruction(addr: str) -> dict:
     """
     Get disassembly of a single instruction at the specified address
-    
+
     Parameters:
-        addr: Memory address (in hex format, e.g. "0x1000")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
     
     Returns:
         Dictionary containing instruction details
@@ -634,9 +634,9 @@ def DisasmGetInstruction(addr: str) -> dict:
 def DisasmGetInstructionRange(addr: str, count: int = 1) -> list:
     """
     Get disassembly of multiple instructions starting at the specified address
-    
+
     Parameters:
-        addr: Memory address (in hex format, e.g. "0x1000")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
         count: Number of instructions to disassemble (default: 1, max: 100)
     
     Returns:
@@ -756,7 +756,7 @@ def GetTebAddress(tid: str) -> dict:
     Use GetThreadList first to discover thread IDs.
     
     Args:
-        tid: Thread ID (decimal integer string, e.g. "1234")
+        tid: Thread ID, decimal or hex with 0x prefix (e.g. "1234" or "0x4D2")
     
     Returns:
         Dictionary with tid and tebAddress fields
@@ -777,7 +777,7 @@ def MemoryBase(addr: str) -> dict:
     Find the base address and size of a module containing the given address
     
     Parameters:
-        addr: Memory address (in hex format, e.g. "0x7FF12345")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
     
     Returns:
         Dictionary containing base_address and size of the module
@@ -851,7 +851,7 @@ def StringGetAt(addr: str) -> dict:
     Uses x64dbg's internal string detection (same as the disassembly view).
     
     Parameters:
-        addr: Memory address (in hex format, e.g. "0x1400010a0")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
     
     Returns:
         Dictionary with:
@@ -884,7 +884,7 @@ def XrefGet(addr: str) -> dict:
     first for comprehensive results.
     
     Parameters:
-        addr: Target address to find references to (hex format, e.g. "0x1400010a0")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
     
     Returns:
         Dictionary with:
@@ -912,7 +912,7 @@ def XrefCount(addr: str) -> dict:
     This is a lightweight check that doesn't fetch the full reference list.
     
     Parameters:
-        addr: Target address to count references for (hex format, e.g. "0x1400010a0")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
     
     Returns:
         Dictionary with:
@@ -966,8 +966,8 @@ def MemoryRemoteAlloc(size: str, addr: str = "0") -> dict:
     Useful for code injection, shellcode testing, or creating data buffers.
     
     Parameters:
-        size: Size in bytes to allocate (hex format, e.g. "0x1000")
-        addr: Preferred base address (hex format, default "0" for any address)
+        size: Size to allocate, decimal or hex with 0x prefix (e.g. "4096" or "0x1000")
+        addr: Memory address in hex (e.g. "0x1000" or "1000"), default "0" for any address
     
     Returns:
         Dictionary with:
@@ -990,7 +990,7 @@ def MemoryRemoteFree(addr: str) -> dict:
     Free memory previously allocated in the debuggee's address space via MemoryRemoteAlloc.
     
     Parameters:
-        addr: Address of the memory to free (hex format, e.g. "0x1000")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
     
     Returns:
         Dictionary with success status
@@ -1016,7 +1016,7 @@ def GetBranchDestination(addr: str) -> dict:
     Resolves where the branch at the given address would jump/call to.
     
     Parameters:
-        addr: Address of the branch instruction (hex format, e.g. "0x1400010a0")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
     
     Returns:
         Dictionary with:
@@ -1102,7 +1102,7 @@ def LabelSet(addr: str, text: str) -> dict:
     Labels appear in the disassembly view and are useful for marking important addresses.
     
     Parameters:
-        addr: Address to set the label at (hex format, e.g. "0x1400010a0")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
         text: Label text (e.g. "main_decrypt_loop")
     
     Returns:
@@ -1124,8 +1124,8 @@ def LabelGet(addr: str) -> dict:
     Get the label at the specified address.
     
     Parameters:
-        addr: Address to query (hex format, e.g. "0x1400010a0")
-    
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
+
     Returns:
         Dictionary with:
         - address: The queried address
@@ -1173,7 +1173,7 @@ def CommentSet(addr: str, text: str) -> dict:
     Comments appear in the disassembly view next to the instruction.
     
     Parameters:
-        addr: Address to set the comment at (hex format, e.g. "0x1400010a0")
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
         text: Comment text
     
     Returns:
@@ -1195,8 +1195,8 @@ def CommentGet(addr: str) -> dict:
     Get the comment at the specified address.
     
     Parameters:
-        addr: Address to query (hex format, e.g. "0x1400010a0")
-    
+        addr: Memory address in hex (e.g. "0x1000" or "1000")
+
     Returns:
         Dictionary with:
         - address: The queried address
