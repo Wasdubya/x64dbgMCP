@@ -549,8 +549,8 @@ def PatternFindMem(start: str, size: str, pattern: str) -> str:
     
     Parameters:
         start: Start address (in hex format, e.g. "0x1000")
-        size: Size to search
-        pattern: Pattern to find (e.g. "48 8B 05 ? ? ? ?")
+        size: Size to search IN DECIMAL
+        pattern: Pattern to find (e.g. "48 8B 05 ?? ?? ?? ??")
     
     Returns:
         Found address in hex format or error message
@@ -591,44 +591,6 @@ def MiscRemoteGetProcAddress(module: str, api: str) -> str:
 # =============================================================================
 # LEGACY COMPATIBILITY FUNCTIONS
 # =============================================================================
-
-@mcp.tool()
-def SetRegister(name: str, value: str) -> str:
-    """
-    Set register value using command (legacy compatibility)
-    
-    Parameters:
-        name: Register name (e.g. "eax", "rip")
-        value: Value to set (in hex format, e.g. "0x1000")
-    
-    Returns:
-        Status message
-    """
-    # Construct command to set register
-    cmd = f"r {name}={value}"
-    return ExecCommand(cmd)
-
-
-@mcp.tool()
-def DisasmGetInstruction(addr: str) -> dict:
-    """
-    Get disassembly of a single instruction at the specified address
-    
-    Parameters:
-        addr: Memory address (in hex format, e.g. "0x1000")
-    
-    Returns:
-        Dictionary containing instruction details
-    """
-    result = safe_get("Disasm/GetInstruction", {"addr": addr})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse disassembly result", "raw": result}
-    return {"error": "Unexpected response format"}
 
 @mcp.tool()
 def DisasmGetInstructionRange(addr: str, count: int = 1) -> list:
@@ -687,7 +649,7 @@ def GetModuleList() -> list:
         try:
             return json.loads(result)
         except:
-            return [{"error": "Failed to parse module list", "raw": result}]
+            return [{"raw": result}]
     return [{"error": "Unexpected response format"}]
 
 @mcp.tool()

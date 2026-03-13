@@ -9,7 +9,6 @@
 </p>
 <p align="center">
   <img src="https://img.shields.io/github/stars/wasdubya/x64dbgmcp?style=for-the-badge" />
-  <img src="https://img.shields.io/github/downloads/wasdubya/x64dbgmcp/total?style=for-the-badge" />
 </p>
 
 <div align="center"> An MCP server that can bridge various LLMS (Claude and Cursor tested) with the x64dbg debugger, providing direct access to debugging applications through prompts. </div>
@@ -90,4 +89,3 @@
 <br>
 <br>
 🧀**Enjoy Automated Debugging**🛎️
-In my opinion, this is currently the best free dynamic analysis tool combined with latest LLMS. Try it out.
