@@ -673,18 +673,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
                         continue;
                     }
-                    
+
                     std::vector<unsigned char> buffer;
                     for (size_t i = 0; i < dataStr.length(); i += 2) {
                         if (i + 1 >= dataStr.length()) break;
@@ -710,18 +705,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
                         continue;
                     }
-                    
+
                     bool isValid = Script::Memory::IsValidPtr(addr);
                     sendHttpResponse(clientSocket, 200, "text/plain", isValid ? "true" : "false");
                 }
@@ -732,18 +722,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
                         continue;
                     }
-                    
+
                     unsigned int protect = Script::Memory::GetProtect(addr);
                     std::stringstream ss;
                     ss << "0x" << std::hex << protect;
@@ -784,18 +769,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
                         continue;
                     }
-                    
+
                     bool success = Script::Debug::SetBreakpoint(addr);
                     sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
                         success ? "Breakpoint set successfully" : "Failed to set breakpoint");
@@ -807,18 +787,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
                         continue;
                     }
-                    
+
                     bool success = Script::Debug::DeleteBreakpoint(addr);
                     sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
                         success ? "Breakpoint deleted successfully" : "Failed to delete breakpoint");
@@ -836,18 +811,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
                         continue;
                     }
-                    
+
                     unsigned char dest[16];
                     int size = 16;
                     bool success = Script::Assembler::Assemble(addr, dest, &size, instruction.c_str());
@@ -876,18 +846,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
                         continue;
                     }
-                    
+
                     bool success = Script::Assembler::AssembleMem(addr, instruction.c_str());
                     sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
                         success ? "Instruction assembled in memory successfully" : "Failed to assemble instruction in memory");
@@ -905,15 +870,10 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint value = 0;
-                    try {
-                        if (valueStr.substr(0, 2) == "0x") {
-                            value = std::stoull(valueStr.substr(2), nullptr, 16);
-                        } else {
-                            value = std::stoull(valueStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid value format");
+                    std::string parseError;
+                    auto [valueOk, value] = parseAddress(valueStr, parseError);
+                    if (!valueOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
                         continue;
                     }
                     
@@ -946,18 +906,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
                         continue;
                     }
-                    
+
                     // Use the correct DISASM_INSTR structure
                     DISASM_INSTR instr;
                     DbgDisasmAt(addr, &instr);
@@ -981,22 +936,20 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint addr = 0;
                     int count = 1;
-                    
-                    try {
-                        if (addrStr.substr(0, 2) == "0x") {
-                            addr = std::stoull(addrStr.substr(2), nullptr, 16);
-                        } else {
-                            addr = std::stoull(addrStr, nullptr, 16);
-                        }
-                        
-                        if (!countStr.empty()) {
-                            count = std::stoi(countStr);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address or count format");
+                    std::string parseError;
+                    auto [addrOk, addr] = parseAddress(addrStr, parseError);
+                    if (!addrOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
                         continue;
+                    }
+                    if (!countStr.empty()) {
+                        auto [countOk, countVal] = parseNumber(countStr, parseError);
+                        if (!countOk) {
+                            sendHttpResponse(clientSocket, 400, "text/plain", parseError);
+                            continue;
+                        }
+                        count = static_cast<int>(countVal);
                     }
                     
                     if (count <= 0 || count > 100) {
@@ -1121,25 +1074,19 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint start = 0, size = 0;
-
-                    Pattern.erase(std::remove_if(pattern.begin(), pattern.end(), 
-                                  [](unsigned char c) { return std::isspace(c); }), 
+                    Pattern.erase(std::remove_if(pattern.begin(), pattern.end(),
+                                  [](unsigned char c) { return std::isspace(c); }),
                     Pattern.end());
 
-                    try {
-                        if (startStr.substr(0, 2) == "0x") {
-                            start = std::stoull(startStr.substr(2), nullptr, 16);
-                        } else {
-                            start = std::stoull(startStr, nullptr, 16);
-                        }
-                        if (sizeStr.substr(0, 2) == "0x") {
-                            size = std::stoull(sizeStr.substr(2), nullptr, 16);
-                        } else {
-                            size = std::stoull(sizeStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid start or size format");
+                    std::string parseError;
+                    auto [startOk, start] = parseAddress(startStr, parseError);
+                    if (!startOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
+                        continue;
+                    }
+                    auto [sizeOk, size] = parseNumber(sizeStr, parseError);
+                    if (!sizeOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
                         continue;
                     }
                     
