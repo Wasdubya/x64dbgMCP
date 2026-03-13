@@ -612,18 +612,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    duint value = 0;
-                    try {
-                        if (valueStr.substr(0, 2) == "0x") {
-                            value = std::stoull(valueStr.substr(2), nullptr, 16);
-                        } else {
-                            value = std::stoull(valueStr, nullptr, 16);
-                        }
-                    } catch (const std::exception& e) {
-                        sendHttpResponse(clientSocket, 400, "text/plain", "Invalid value format");
+                    std::string parseError;
+                    auto [valueOk, value] = parseAddress(valueStr, parseError);
+                    if (!valueOk) {
+                        sendHttpResponse(clientSocket, 400, "text/plain", parseError);
                         continue;
                     }
-                    
+
                     bool success = Script::Register::Set(reg, value);
                     sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
                         success ? "Register set successfully" : "Failed to set register");
