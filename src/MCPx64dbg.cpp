@@ -245,6 +245,54 @@ std::string escapeJsonString(const char* str) {
     return result;
 }
 
+// Parse a hex address string. Accepts "0x1234" or "1234" (always base 16).
+static std::pair<bool, duint> parseAddress(const std::string& str, std::string& error) {
+    try {
+        if (str.empty()) {
+            error = "Invalid address format: empty string. Expected hex (e.g. '0x1000' or '1000')";
+            return {false, 0};
+        }
+        std::string s = str;
+        if (s.size() >= 2 && (s.substr(0, 2) == "0x" || s.substr(0, 2) == "0X")) {
+            s = s.substr(2);
+        }
+        if (s.empty()) {
+            error = "Invalid address format: '" + str + "'. Expected hex (e.g. '0x1000' or '1000')";
+            return {false, 0};
+        }
+        size_t pos = 0;
+        duint value = std::stoull(s, &pos, 16);
+        if (pos != s.size()) {
+            error = "Invalid address format: '" + str + "'. Expected hex (e.g. '0x1000' or '1000')";
+            return {false, 0};
+        }
+        return {true, value};
+    } catch (...) {
+        error = "Invalid address format: '" + str + "'. Expected hex (e.g. '0x1000' or '1000')";
+        return {false, 0};
+    }
+}
+
+// Parse a numeric string with auto-detection: 0x prefix = hex, 0 prefix = octal, else decimal.
+static std::pair<bool, duint> parseNumber(const std::string& str, std::string& error) {
+    try {
+        if (str.empty()) {
+            error = "Invalid number format: empty string. Expected decimal or hex with 0x prefix (e.g. '32' or '0x20')";
+            return {false, 0};
+        }
+        size_t pos = 0;
+        duint value = std::stoull(str, &pos, 0);
+        if (pos != str.size()) {
+            error = "Invalid number format: '" + str + "'. Expected decimal or hex with 0x prefix (e.g. '32' or '0x20')";
+            return {false, 0};
+        }
+        return {true, value};
+    } catch (...) {
+        error = "Invalid number format: '" + str + "'. Expected decimal or hex with 0x prefix (e.g. '32' or '0x20')";
+        return {false, 0};
+    }
+}
+
 // HTTP server thread function using standard Winsock
 DWORD WINAPI HttpServerThread(LPVOID lpParam) {
     WSADATA wsaData;
