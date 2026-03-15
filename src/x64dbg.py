@@ -481,7 +481,7 @@ def StackPeek(offset: str = "0") -> str:
 @mcp.tool()
 def FlagGet(flag: str) -> bool:
     """
-    Get CPU flag value using Script API
+    Get CPU flag value using TitanEngine
     
     Parameters:
         flag: Flag name (ZF, OF, CF, PF, SF, TF, AF, DF, IF)
@@ -490,6 +490,8 @@ def FlagGet(flag: str) -> bool:
         Flag value (True/False)
     """
     result = safe_get("Flag/Get", {"flag": flag})
+    if isinstance(result, bool):
+        return result
     if isinstance(result, str):
         return result.lower() == "true"
     return False

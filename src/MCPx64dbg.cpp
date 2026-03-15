@@ -20,9 +20,9 @@
 #include "pluginsdk/_scriptapi_stack.h"
 #include "pluginsdk/_scriptapi_pattern.h"
 #include "pluginsdk/_scriptapi_flag.h"
-#include "pluginsdk/TitanEngine/TitanEngine.h"
 #include "pluginsdk/_scriptapi_gui.h"
 #include "pluginsdk/_scriptapi_misc.h"
+#include "pluginsdk/TitanEngine.h"
 #include <iomanip>  // For std::setw and std::setfill
 
 // Socket includes - after Windows.h
@@ -80,6 +80,56 @@ bool g_httpServerRunning = false;
 int g_httpPort = DEFAULT_PORT;
 std::mutex g_httpMutex;
 SOCKET g_serverSocket = INVALID_SOCKET;
+
+struct GuiContextReadRequest
+{
+    DWORD titanIndex;
+    ULONG_PTR value;
+    bool success;
+    HANDLE doneEvent;
+};
+
+static void readContextOnGuiThread(void* userdata)
+{
+    auto* request = static_cast<GuiContextReadRequest*>(userdata);
+    request->success = false;
+    request->value = 0;
+    HANDLE hThread = DbgGetThreadHandle();
+    if(hThread)
+    {
+        if(request->titanIndex == UE_CFLAGS)
+        {
+            TITAN_ENGINE_CONTEXT_t context = {};
+            if(GetFullContextDataEx(hThread, &context))
+            {
+                request->value = context.eflags;
+                request->success = true;
+            }
+        }
+        else
+        {
+            request->value = GetContextDataEx(hThread, request->titanIndex);
+            request->success = true;
+        }
+    }
+    SetEvent(request->doneEvent);
+}
+
+static bool readContextDataOnGuiThread(DWORD titanIndex, ULONG_PTR& value)
+{
+    GuiContextReadRequest request = {};
+    request.titanIndex = titanIndex;
+    request.doneEvent = CreateEventA(nullptr, TRUE, FALSE, nullptr);
+    if(!request.doneEvent)
+        return false;
+    GuiExecuteOnGuiThreadEx(readContextOnGuiThread, &request);
+    WaitForSingleObject(request.doneEvent, INFINITE);
+    CloseHandle(request.doneEvent);
+    if(!request.success)
+        return false;
+    value = request.value;
+    return true;
+}
 
 // Forward declarations
 bool startHttpServer();
@@ -1001,23 +1051,30 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing flag parameter");
                         continue;
                     }
-                    
-                    bool value = false;
-                    if (flagName == "ZF" || flagName == "zf") value = Script::Flag::GetZF();
-                    else if (flagName == "OF" || flagName == "of") value = Script::Flag::GetOF();
-                    else if (flagName == "CF" || flagName == "cf") value = Script::Flag::GetCF();
-                    else if (flagName == "PF" || flagName == "pf") value = Script::Flag::GetPF();
-                    else if (flagName == "SF" || flagName == "sf") value = Script::Flag::GetSF();
-                    else if (flagName == "TF" || flagName == "tf") value = Script::Flag::GetTF();
-                    else if (flagName == "AF" || flagName == "af") value = Script::Flag::GetAF();
-                    else if (flagName == "DF" || flagName == "df") value = Script::Flag::GetDF();
-                    else if (flagName == "IF" || flagName == "if") value = Script::Flag::GetIF();
-                    else {
+                    std::string flagLower = flagName;
+                    std::transform(flagLower.begin(), flagLower.end(), flagLower.begin(), ::tolower);
+                    if (flagLower != "zf" && flagLower != "of" && flagLower != "cf" && flagLower != "pf" &&
+                        flagLower != "sf" && flagLower != "tf" && flagLower != "af" && flagLower != "df" && flagLower != "if") {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Unknown flag");
                         continue;
                     }
-                    
-                    sendHttpResponse(clientSocket, 200, "text/plain", value ? "true" : "false");
+                    int bit = -1;
+                    if (flagLower == "zf") bit = 6;
+                    else if (flagLower == "of") bit = 11;
+                    else if (flagLower == "cf") bit = 0;
+                    else if (flagLower == "pf") bit = 2;
+                    else if (flagLower == "sf") bit = 7;
+                    else if (flagLower == "tf") bit = 8;
+                    else if (flagLower == "af") bit = 4;
+                    else if (flagLower == "df") bit = 10;
+                    else if (flagLower == "if") bit = 9;
+                    ULONG_PTR cflags = 0;
+                    if (!readContextDataOnGuiThread(UE_CFLAGS, cflags)) {
+                        sendHttpResponse(clientSocket, 500, "text/plain", "Failed to read flags");
+                        continue;
+                    }
+                    bool val = (cflags >> bit) & 1;
+                    sendHttpResponse(clientSocket, 200, "text/plain", val ? "true" : "false");
                 }
                 else if (path == "/Flag/Set") {
                     std::string flagName = queryParams["flag"];
