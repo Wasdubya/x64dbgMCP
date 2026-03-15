@@ -20,6 +20,7 @@
 #include "pluginsdk/_scriptapi_stack.h"
 #include "pluginsdk/_scriptapi_pattern.h"
 #include "pluginsdk/_scriptapi_flag.h"
+#include "pluginsdk/TitanEngine/TitanEngine.h"
 #include "pluginsdk/_scriptapi_gui.h"
 #include "pluginsdk/_scriptapi_misc.h"
 #include <iomanip>  // For std::setw and std::setfill
@@ -96,12 +97,6 @@ bool cbEnableHttpServer(int argc, char* argv[]);
 bool cbSetHttpPort(int argc, char* argv[]);
 void registerCommands();
 
-//=============================================================================
-// Plugin Interface Implementation
-//============================================================================
-
-
-// Initialize the plugin
 bool pluginInit(PLUG_INITSTRUCT* initStruct) {
     initStruct->pluginVersion = PLUGIN_VERSION;
     initStruct->sdkVersion = PLUG_SDKVERSION;
@@ -149,11 +144,6 @@ extern "C" __declspec(dllexport) void plugsetup(PLUG_SETUPSTRUCT* setupStruct) {
     pluginSetup();
 }
 
-//=============================================================================
-// HTTP Server Implementation
-//=============================================================================
-
-// Start the HTTP server
 bool startHttpServer() {
     std::lock_guard<std::mutex> lock(g_httpMutex);
     
@@ -458,9 +448,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     ss << "{\"isDebugging\":" << (isDebugging ? "true" : "false") << "}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // REGISTER API ENDPOINTS
-                // =============================================================================
                 else if (path == "/Register/Get") {
                     std::string regName = queryParams["register"];
                     if (regName.empty()) {
@@ -709,9 +696,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     sendHttpResponse(clientSocket, 200, "text/plain", ss.str());
                 }
                 
-                // =============================================================================
-                // DEBUG API ENDPOINTS
-                // =============================================================================
                 else if (path == "/Debug/Run") {
                     Script::Debug::Run();
                     sendHttpResponse(clientSocket, 200, "text/plain", "Debug run executed");
@@ -1011,9 +995,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // FLAG API ENDPOINTS
-                // =============================================================================
                 else if (path == "/Flag/Get") {
                     std::string flagName = queryParams["flag"];
                     if (flagName.empty()) {
@@ -1045,31 +1026,36 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing flag or value parameter");
                         continue;
                     }
-                    
-                    bool value = (valueStr == "true" || valueStr == "1");
-                    bool success = false;
-                    
-                    if (flagName == "ZF" || flagName == "zf") success = Script::Flag::SetZF(value);
-                    else if (flagName == "OF" || flagName == "of") success = Script::Flag::SetOF(value);
-                    else if (flagName == "CF" || flagName == "cf") success = Script::Flag::SetCF(value);
-                    else if (flagName == "PF" || flagName == "pf") success = Script::Flag::SetPF(value);
-                    else if (flagName == "SF" || flagName == "sf") success = Script::Flag::SetSF(value);
-                    else if (flagName == "TF" || flagName == "tf") success = Script::Flag::SetTF(value);
-                    else if (flagName == "AF" || flagName == "af") success = Script::Flag::SetAF(value);
-                    else if (flagName == "DF" || flagName == "df") success = Script::Flag::SetDF(value);
-                    else if (flagName == "IF" || flagName == "if") success = Script::Flag::SetIF(value);
+                    std::string vLower = valueStr;
+                    std::transform(vLower.begin(), vLower.end(), vLower.begin(), ::tolower);
+                    bool value = (vLower == "true" || vLower == "1");
+                    int bit = -1;
+                    if (flagName == "ZF" || flagName == "zf") bit = 6;
+                    else if (flagName == "OF" || flagName == "of") bit = 11;
+                    else if (flagName == "CF" || flagName == "cf") bit = 0;
+                    else if (flagName == "PF" || flagName == "pf") bit = 2;
+                    else if (flagName == "SF" || flagName == "sf") bit = 7;
+                    else if (flagName == "TF" || flagName == "tf") bit = 8;
+                    else if (flagName == "AF" || flagName == "af") bit = 4;
+                    else if (flagName == "DF" || flagName == "df") bit = 10;
+                    else if (flagName == "IF" || flagName == "if") bit = 9;
                     else {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Unknown flag");
                         continue;
                     }
-                    
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
+                    HANDLE hThread = DbgGetThreadHandle();
+                    ULONG_PTR cflags = GetContextDataEx(hThread, UE_CFLAGS);
+                    if (value)
+                        cflags |= (ULONG_PTR)1 << bit;
+                    else
+                        cflags &= ~((ULONG_PTR)1 << bit);
+                    bool success = SetContextDataEx(hThread, UE_CFLAGS, cflags);
+                    if (success)
+                        GuiUpdateRegisterView();
+                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain",
                         success ? "Flag set successfully" : "Failed to set flag");
                 }
                 
-                // =============================================================================
-                // PATTERN API ENDPOINTS
-                // =============================================================================
                 else if (path == "/Pattern/FindMem") {
                     std::string startStr = queryParams["start"];
                     std::string sizeStr = queryParams["size"];
@@ -1225,9 +1211,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 200, "application/json", jsonResponse.str());
                     }
                 }
-                // =============================================================================
-                // SYMBOL ENUMERATION ENDPOINT
-                // =============================================================================
                 else if (path == "/SymbolEnum") {
                     // Module name is required to keep response sizes manageable
                     std::string moduleFilter = queryParams["module"];
@@ -1339,9 +1322,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     
                     sendHttpResponse(clientSocket, 200, "application/json", jsonResponse.str());
                 }
-                // =============================================================================
-                // THREAD API ENDPOINTS
-                // =============================================================================
                 else if (path == "/GetThreadList") {
                     THREADLIST threadList;
                     memset(&threadList, 0, sizeof(threadList));
@@ -1451,9 +1431,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                        << ",\"tebAddress\":\"0x" << std::hex << tebAddr << "\"}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // STRING API ENDPOINTS
-                // =============================================================================
                 else if (path == "/String/GetAt") {
                     std::string addrStr = queryParams["addr"];
                     if (addrStr.empty()) {
@@ -1480,9 +1457,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                        << "\"string\":\"" << escapeJsonString(text) << "\"}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // XREF API ENDPOINTS
-                // =============================================================================
                 else if (path == "/Xref/Get") {
                     std::string addrStr = queryParams["addr"];
                     if (addrStr.empty()) {
@@ -1565,9 +1539,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                        << "\"count\":" << std::dec << count << "}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // MEMORY MAP ENDPOINT
-                // =============================================================================
                 else if (path == "/MemoryMap") {
                     MEMMAP memmap;
                     memset(&memmap, 0, sizeof(memmap));
@@ -1614,9 +1585,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     ss << "]}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // REMOTE MEMORY ALLOC/FREE ENDPOINTS
-                // =============================================================================
                 else if (path == "/Memory/RemoteAlloc") {
                     std::string addrStr = queryParams["addr"];
                     std::string sizeStr = queryParams["size"];
@@ -1672,9 +1640,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     ss << "{\"success\":" << (success ? "true" : "false") << "}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // BRANCH DESTINATION ENDPOINT
-                // =============================================================================
                 else if (path == "/GetBranchDestination") {
                     std::string addrStr = queryParams["addr"];
                     if (addrStr.empty()) {
@@ -1700,9 +1665,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                        << "\"resolved\":" << (dest != 0 ? "true" : "false") << "}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // CALL STACK ENDPOINT
-                // =============================================================================
                 else if (path == "/GetCallStack") {
                     const DBGFUNCTIONS* dbgFunc = DbgFunctions();
                     if (!dbgFunc || !dbgFunc->GetCallStackEx) {
@@ -1733,9 +1695,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     ss << "]}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // BREAKPOINT LIST ENDPOINT
-                // =============================================================================
                 else if (path == "/Breakpoint/List") {
                     std::string typeStr = queryParams["type"];
                     
@@ -1803,9 +1762,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     ss << "],\"count\":" << std::dec << totalEmitted << "}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // LABEL GET/SET ENDPOINTS
-                // =============================================================================
                 else if (path == "/Label/Set") {
                     std::string addrStr = queryParams["addr"];
                     std::string text = queryParams["text"];
@@ -1888,9 +1844,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     BridgeFree(labelList.data);
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // COMMENT GET/SET ENDPOINTS
-                // =============================================================================
                 else if (path == "/Comment/Set") {
                     std::string addrStr = queryParams["addr"];
                     std::string text = queryParams["text"];
@@ -1944,9 +1897,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                        << "\"comment\":\"" << escapeJsonString(text) << "\"}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // REGISTER DUMP ENDPOINT
-                // =============================================================================
                 else if (path == "/RegisterDump") {
                     REGDUMP regdump;
                     memset(&regdump, 0, sizeof(regdump));
@@ -2021,9 +1971,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // HARDWARE BREAKPOINT ENDPOINTS
-                // =============================================================================
                 else if (path == "/Debug/SetHardwareBreakpoint") {
                     std::string addrStr = queryParams["addr"];
                     std::string typeStr = queryParams["type"]; // access, write, execute
@@ -2077,9 +2024,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                        << "\"address\":\"0x" << std::hex << addr << "\"}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // ENUM TCP CONNECTIONS ENDPOINT
-                // =============================================================================
                 else if (path == "/EnumTcpConnections") {
                     const DBGFUNCTIONS* dbgFunc = DbgFunctions();
                     if (!dbgFunc || !dbgFunc->EnumTcpConnections) {
@@ -2116,9 +2060,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     BridgeFree(tcpList.data);
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // PATCH ENUM/GET ENDPOINTS
-                // =============================================================================
                 else if (path == "/Patch/List") {
                     const DBGFUNCTIONS* dbgFunc = DbgFunctions();
                     if (!dbgFunc || !dbgFunc->PatchEnum) {
@@ -2207,9 +2148,6 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     ss << "}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                // =============================================================================
-                // ENUM HANDLES ENDPOINT
-                // =============================================================================
                 else if (path == "/EnumHandles") {
                     const DBGFUNCTIONS* dbgFunc = DbgFunctions();
                     if (!dbgFunc || !dbgFunc->EnumHandles) {

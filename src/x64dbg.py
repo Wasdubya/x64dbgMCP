@@ -75,9 +75,6 @@ def safe_post(endpoint: str, data: dict | str):
     except Exception as e:
         return f"Request failed: {str(e)}"
 
-# =============================================================================
-# TOOL REGISTRY INTROSPECTION (for CLI/Claude tool-use)
-# =============================================================================
 
 def _get_mcp_tools_registry() -> Dict[str, Callable[..., Any]]:
     """
@@ -149,9 +146,6 @@ def _invoke_tool_by_name(name: str, args: Dict[str, Any]) -> Any:
     except Exception as e:
         return {"error": str(e)}
 
-# =============================================================================
-# Claude block normalization helpers
-# =============================================================================
 
 def _block_to_dict(block: Any) -> Dict[str, Any]:
     try:
@@ -175,9 +169,6 @@ def _block_to_dict(block: Any) -> Dict[str, Any]:
     # Fallback generic representation
     return {"type": str(btype or "unknown"), "raw": str(block)}
 
-# =============================================================================
-# UNIFIED COMMAND EXECUTION
-# =============================================================================
 
 @mcp.tool()
 def ExecCommand(cmd: str, offset: int = 0, limit: int = 100) -> dict:
@@ -199,9 +190,6 @@ def ExecCommand(cmd: str, offset: int = 0, limit: int = 100) -> dict:
     """
     return safe_get("ExecCommand", {"cmd": cmd, "offset": offset, "limit": limit})
 
-# =============================================================================
-# DEBUGGING STATUS
-# =============================================================================
 
 @mcp.tool()
 def IsDebugActive() -> bool:
@@ -242,9 +230,6 @@ def IsDebugging() -> bool:
         except Exception:
             return False
     return False
-# =============================================================================
-# REGISTER API
-# =============================================================================
 
 @mcp.tool()
 def RegisterGet(register: str) -> str:
@@ -273,9 +258,6 @@ def RegisterSet(register: str, value: str) -> str:
     """
     return safe_get("Register/Set", {"register": register, "value": value})
 
-# =============================================================================
-# MEMORY API (Enhanced)
-# =============================================================================
 
 @mcp.tool()
 def MemoryRead(addr: str, size: str) -> str:
@@ -334,9 +316,6 @@ def MemoryGetProtect(addr: str) -> str:
     """
     return safe_get("Memory/GetProtect", {"addr": addr})
 
-# =============================================================================
-# DEBUG API
-# =============================================================================
 
 @mcp.tool()
 def DebugRun() -> str:
@@ -424,9 +403,6 @@ def DebugDeleteBreakpoint(addr: str) -> str:
     """
     return safe_get("Debug/DeleteBreakpoint", {"addr": addr})
 
-# =============================================================================
-# ASSEMBLER API
-# =============================================================================
 
 @mcp.tool()
 def AssemblerAssemble(addr: str, instruction: str) -> dict:
@@ -464,9 +440,6 @@ def AssemblerAssembleMem(addr: str, instruction: str) -> str:
     """
     return safe_get("Assembler/AssembleMem", {"addr": addr, "instruction": instruction})
 
-# =============================================================================
-# STACK API
-# =============================================================================
 
 @mcp.tool()
 def StackPop() -> str:
@@ -504,9 +477,6 @@ def StackPeek(offset: str = "0") -> str:
     """
     return safe_get("Stack/Peek", {"offset": offset})
 
-# =============================================================================
-# FLAG API
-# =============================================================================
 
 @mcp.tool()
 def FlagGet(flag: str) -> bool:
@@ -538,9 +508,6 @@ def FlagSet(flag: str, value: bool) -> str:
     """
     return safe_get("Flag/Set", {"flag": flag, "value": "true" if value else "false"})
 
-# =============================================================================
-# PATTERN API
-# =============================================================================
 
 @mcp.tool()
 def PatternFindMem(start: str, size: str, pattern: str) -> str:
@@ -557,9 +524,6 @@ def PatternFindMem(start: str, size: str, pattern: str) -> str:
     """
     return safe_get("Pattern/FindMem", {"start": start, "size": size, "pattern": pattern})
 
-# =============================================================================
-# MISC API
-# =============================================================================
 
 @mcp.tool()
 def MiscParseExpression(expression: str) -> str:
@@ -588,9 +552,6 @@ def MiscRemoteGetProcAddress(module: str, api: str) -> str:
     """
     return safe_get("Misc/RemoteGetProcAddress", {"module": module, "api": api})
 
-# =============================================================================
-# LEGACY COMPATIBILITY FUNCTIONS
-# =============================================================================
 
 @mcp.tool()
 def DisasmGetInstructionRange(addr: str, count: int = 1) -> list:
@@ -802,9 +763,6 @@ def SetPageRights(addr: str, rights: str) -> bool:
 
     return False
 
-# =============================================================================
-# STRING API
-# =============================================================================
 
 @mcp.tool()
 def StringGetAt(addr: str) -> dict:
@@ -831,9 +789,6 @@ def StringGetAt(addr: str) -> dict:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
 
-# =============================================================================
-# XREF (CROSS-REFERENCE) API
-# =============================================================================
 
 @mcp.tool()
 def XrefGet(addr: str) -> dict:
@@ -891,9 +846,6 @@ def XrefCount(addr: str) -> dict:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
 
-# =============================================================================
-# MEMORY MAP API
-# =============================================================================
 
 @mcp.tool()
 def GetMemoryMap() -> dict:
@@ -917,9 +869,6 @@ def GetMemoryMap() -> dict:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
 
-# =============================================================================
-# REMOTE MEMORY ALLOC/FREE API
-# =============================================================================
 
 @mcp.tool()
 def MemoryRemoteAlloc(size: str, addr: str = "0") -> dict:
@@ -967,9 +916,6 @@ def MemoryRemoteFree(addr: str) -> dict:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
 
-# =============================================================================
-# BRANCH DESTINATION API
-# =============================================================================
 
 @mcp.tool()
 def GetBranchDestination(addr: str) -> dict:
@@ -996,9 +942,6 @@ def GetBranchDestination(addr: str) -> dict:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
 
-# =============================================================================
-# CALL STACK API
-# =============================================================================
 
 @mcp.tool()
 def GetCallStack() -> dict:
@@ -1025,9 +968,6 @@ def GetCallStack() -> dict:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
 
-# =============================================================================
-# BREAKPOINT LIST API
-# =============================================================================
 
 @mcp.tool()
 def GetBreakpointList(type: str = "all") -> dict:
@@ -1053,9 +993,6 @@ def GetBreakpointList(type: str = "all") -> dict:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
 
-# =============================================================================
-# LABEL API
-# =============================================================================
 
 @mcp.tool()
 def LabelSet(addr: str, text: str) -> dict:
@@ -1124,9 +1061,6 @@ def LabelList() -> dict:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
 
-# =============================================================================
-# COMMENT API
-# =============================================================================
 
 @mcp.tool()
 def CommentSet(addr: str, text: str) -> dict:
@@ -1175,9 +1109,6 @@ def CommentGet(addr: str) -> dict:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
 
-# =============================================================================
-# REGISTER DUMP API
-# =============================================================================
 
 @mcp.tool()
 def GetRegisterDump() -> dict:
@@ -1203,9 +1134,6 @@ def GetRegisterDump() -> dict:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
 
-# =============================================================================
-# HARDWARE BREAKPOINT API
-# =============================================================================
 
 @mcp.tool()
 def SetHardwareBreakpoint(addr: str, type: str = "execute") -> dict:
@@ -1251,9 +1179,6 @@ def DeleteHardwareBreakpoint(addr: str) -> dict:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
 
-# =============================================================================
-# TCP CONNECTIONS API
-# =============================================================================
 
 @mcp.tool()
 def EnumTcpConnections() -> dict:
@@ -1277,9 +1202,6 @@ def EnumTcpConnections() -> dict:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
 
-# =============================================================================
-# PATCH API
-# =============================================================================
 
 @mcp.tool()
 def GetPatchList() -> dict:
@@ -1328,9 +1250,6 @@ def GetPatchAt(addr: str) -> dict:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
 
-# =============================================================================
-# HANDLE ENUMERATION API
-# =============================================================================
 
 @mcp.tool()
 def EnumHandles() -> dict:

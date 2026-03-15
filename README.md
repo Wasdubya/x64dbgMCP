@@ -8,7 +8,8 @@
   </a>
 </p>
 <p align="center">
-  <img src="https://img.shields.io/github/stars/wasdubya/x64dbgmcp?style=for-the-badge" />
+  <img src="https://img.shields.io/github/stars/wasdubya/x64dbgmcp?style=social" />
+  <img src="https://img.shields.io/github/downloads/WASDUBYA/x64dbgmcp/total?style=social" />
 </p>
 
 <div align="center"> An MCP server that can bridge various LLMS (Claude and Cursor tested) with the x64dbg debugger, providing direct access to debugging applications through prompts. </div>
@@ -24,14 +25,14 @@
 - Thread management features 
 - Xrefs by addr and string
 - Removed log redirection upon the discovery of the GuiReferenceGetRowCount & GuiReferenceGetCellContent, with pagination.
-<h2> Quick Setup </h2
+<h2> Quick Setup in 3 Steps </h2>
 
-1. **Download Plugin**
+ 1.  **Download Plugin**
    - Grab .dp64 or .dp32 from this repo's build/release directory
    - Copy to your local: [x64dbg_dir]/release/x64/plugins/
 
-2. **Configure Claude Desktop**
-   - Copy x64dbgmcp.py from this repos src directory
+ 2.  **Configure Claude Desktop**
+   - Copy x64dbgmcp.py from this repos src directory, ensure to ```pip install mcp requests```
    - Update local claude_desktop_config.json with path to x64dbgmcp.py
 
 ```json
@@ -47,14 +48,13 @@
 }
 ```
       
-4. **Start Debugging**
+3. **Start Debugging**
    - Launch x64dbg
    - Start Claude Desktop
    - Check plugin loaded successfully (ALT+L in x64dbg for logs)
 <br>
-<br>
-<h2> Build from Source </h2>
 
+<h2> Build from Source </h2>
 
 - git clone [repository-url]
 - cd x64dbgmcp
@@ -66,7 +66,6 @@
 1. Use the --target all_plugins argument to specify both x32 and x64, otherwise use -A flag to distinguish between either x64 or Win32 build. For example 32 bit build would be:
 - cmake -S . -B build32  -A Win32 -DBUILD_BOTH_ARCHES=OFF
 - cmake --build build32 --config Release
-<br>
 <br>
 <h2> Usage Examples </h2>
 
@@ -88,4 +87,4 @@
   - GetModuleBase is the best place to start for models so it will query for the right addresses, x64dbg will not respond to addresses out of range.
 <br>
 <br>
-🧀**Enjoy Automated Debugging**🛎️
+<div align="center">🧀  <b>Enjoy Automated Debugging</b>  🛎️</div>
