@@ -22,7 +22,6 @@
 #include "pluginsdk/_scriptapi_flag.h"
 #include "pluginsdk/_scriptapi_gui.h"
 #include "pluginsdk/_scriptapi_misc.h"
-#include "pluginsdk/TitanEngine.h"
 #include <iomanip>  // For std::setw and std::setfill
 
 // Socket includes - after Windows.h
@@ -81,54 +80,18 @@ int g_httpPort = DEFAULT_PORT;
 std::mutex g_httpMutex;
 SOCKET g_serverSocket = INVALID_SOCKET;
 
-struct GuiContextReadRequest
+static int getFlagBitIndex(const std::string& flagName)
 {
-    DWORD titanIndex;
-    ULONG_PTR value;
-    bool success;
-    HANDLE doneEvent;
-};
-
-static void readContextOnGuiThread(void* userdata)
-{
-    auto* request = static_cast<GuiContextReadRequest*>(userdata);
-    request->success = false;
-    request->value = 0;
-    HANDLE hThread = DbgGetThreadHandle();
-    if(hThread)
-    {
-        if(request->titanIndex == UE_CFLAGS)
-        {
-            TITAN_ENGINE_CONTEXT_t context = {};
-            if(GetFullContextDataEx(hThread, &context))
-            {
-                request->value = context.eflags;
-                request->success = true;
-            }
-        }
-        else
-        {
-            request->value = GetContextDataEx(hThread, request->titanIndex);
-            request->success = true;
-        }
-    }
-    SetEvent(request->doneEvent);
-}
-
-static bool readContextDataOnGuiThread(DWORD titanIndex, ULONG_PTR& value)
-{
-    GuiContextReadRequest request = {};
-    request.titanIndex = titanIndex;
-    request.doneEvent = CreateEventA(nullptr, TRUE, FALSE, nullptr);
-    if(!request.doneEvent)
-        return false;
-    GuiExecuteOnGuiThreadEx(readContextOnGuiThread, &request);
-    WaitForSingleObject(request.doneEvent, INFINITE);
-    CloseHandle(request.doneEvent);
-    if(!request.success)
-        return false;
-    value = request.value;
-    return true;
+    if(flagName == "zf") return 6;
+    if(flagName == "of") return 11;
+    if(flagName == "cf") return 0;
+    if(flagName == "pf") return 2;
+    if(flagName == "sf") return 7;
+    if(flagName == "tf") return 8;
+    if(flagName == "af") return 4;
+    if(flagName == "df") return 10;
+    if(flagName == "if") return 9;
+    return -1;
 }
 
 // Forward declarations
@@ -1053,26 +1016,12 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     }
                     std::string flagLower = flagName;
                     std::transform(flagLower.begin(), flagLower.end(), flagLower.begin(), ::tolower);
-                    if (flagLower != "zf" && flagLower != "of" && flagLower != "cf" && flagLower != "pf" &&
-                        flagLower != "sf" && flagLower != "tf" && flagLower != "af" && flagLower != "df" && flagLower != "if") {
+                    int bit = getFlagBitIndex(flagLower);
+                    if (bit < 0) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Unknown flag");
                         continue;
                     }
-                    int bit = -1;
-                    if (flagLower == "zf") bit = 6;
-                    else if (flagLower == "of") bit = 11;
-                    else if (flagLower == "cf") bit = 0;
-                    else if (flagLower == "pf") bit = 2;
-                    else if (flagLower == "sf") bit = 7;
-                    else if (flagLower == "tf") bit = 8;
-                    else if (flagLower == "af") bit = 4;
-                    else if (flagLower == "df") bit = 10;
-                    else if (flagLower == "if") bit = 9;
-                    ULONG_PTR cflags = 0;
-                    if (!readContextDataOnGuiThread(UE_CFLAGS, cflags)) {
-                        sendHttpResponse(clientSocket, 500, "text/plain", "Failed to read flags");
-                        continue;
-                    }
+                    duint cflags = Script::Register::GetCFLAGS();
                     bool val = (cflags >> bit) & 1;
                     sendHttpResponse(clientSocket, 200, "text/plain", val ? "true" : "false");
                 }
@@ -1086,27 +1035,19 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     std::string vLower = valueStr;
                     std::transform(vLower.begin(), vLower.end(), vLower.begin(), ::tolower);
                     bool value = (vLower == "true" || vLower == "1");
-                    int bit = -1;
-                    if (flagName == "ZF" || flagName == "zf") bit = 6;
-                    else if (flagName == "OF" || flagName == "of") bit = 11;
-                    else if (flagName == "CF" || flagName == "cf") bit = 0;
-                    else if (flagName == "PF" || flagName == "pf") bit = 2;
-                    else if (flagName == "SF" || flagName == "sf") bit = 7;
-                    else if (flagName == "TF" || flagName == "tf") bit = 8;
-                    else if (flagName == "AF" || flagName == "af") bit = 4;
-                    else if (flagName == "DF" || flagName == "df") bit = 10;
-                    else if (flagName == "IF" || flagName == "if") bit = 9;
-                    else {
+                    std::string flagLower = flagName;
+                    std::transform(flagLower.begin(), flagLower.end(), flagLower.begin(), ::tolower);
+                    int bit = getFlagBitIndex(flagLower);
+                    if (bit < 0) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Unknown flag");
                         continue;
                     }
-                    HANDLE hThread = DbgGetThreadHandle();
-                    ULONG_PTR cflags = GetContextDataEx(hThread, UE_CFLAGS);
+                    duint cflags = Script::Register::GetCFLAGS();
                     if (value)
-                        cflags |= (ULONG_PTR)1 << bit;
+                        cflags |= (duint)1 << bit;
                     else
-                        cflags &= ~((ULONG_PTR)1 << bit);
-                    bool success = SetContextDataEx(hThread, UE_CFLAGS, cflags);
+                        cflags &= ~((duint)1 << bit);
+                    bool success = Script::Register::SetCFLAGS(cflags);
                     if (success)
                         GuiUpdateRegisterView();
                     sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain",
