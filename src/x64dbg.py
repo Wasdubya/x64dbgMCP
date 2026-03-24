@@ -526,20 +526,114 @@ def FlagSet(flag: str, value: bool) -> str:
     return safe_get("Flag/Set", {"flag": flag, "value": "true" if value else "false"})
 
 
+def _get_accessible_pages(range_start: int, range_end: int) -> list:
+    """Get list of (start, size) tuples for accessible pages in the given range."""
+    memmap = safe_get("MemoryMap", timeout=120)
+    if isinstance(memmap, str):
+        try:
+            memmap = json.loads(memmap)
+        except:
+            return []
+    if not isinstance(memmap, dict) or "pages" not in memmap:
+        return []
+
+    pages = []
+    for p in memmap["pages"]:
+        try:
+            pbase = int(p["base"], 16) if isinstance(p["base"], str) else p["base"]
+            psize = int(p["size"], 16) if isinstance(p["size"], str) else p["size"]
+        except (KeyError, ValueError):
+            continue
+        pend = pbase + psize
+        prot = p.get("protect", "")
+        if prot.startswith("---") or "NOACCESS" in prot.upper():
+            continue
+        if pend <= range_start or pbase >= range_end:
+            continue
+        scan_start = max(pbase, range_start)
+        scan_end = min(pend, range_end)
+        pages.append((scan_start, scan_end - scan_start))
+    return pages
+
+
 @mcp.tool()
-def PatternFindMem(start: str, size: str, pattern: str) -> str:
+def PatternFindMem(start: str, size: str, pattern: str, find_all: bool = False) -> dict:
     """
-    Find pattern in memory using Script API
-    
+    Find an AOB pattern in memory. Automatically skips unmapped pages so large
+    ranges (e.g. entire module) work reliably.
+
     Parameters:
-        start: Start address (in hex format, e.g. "0x1000")
-        size: Size to search IN DECIMAL
-        pattern: Pattern to find (e.g. "48 8B 05 ?? ?? ?? ??")
-    
+        start: Start address (hex, e.g. "0x140000000")
+        size: Size of range to search (hex, e.g. "0x5000000")
+        pattern: Byte pattern with ?? wildcards (e.g. "48 8B 05 ?? ?? ?? ??")
+        find_all: If true, find ALL occurrences instead of just the first (default: false).
+                  Uses x64dbg's built-in findallmem command which is optimized for this.
+
     Returns:
-        Found address in hex format or error message
+        Dictionary with:
+        - found: Whether a match was found
+        - address: First match address (hex) — only if find_all=False
+        - addresses: List of all match addresses (hex) — only if find_all=True
+        - count: Number of matches found (find_all only)
+        - pages_searched: Number of memory pages scanned (single-find only)
     """
-    return safe_get("Pattern/FindMem", {"start": start, "size": size, "pattern": pattern})
+    try:
+        range_start = int(start, 16) if isinstance(start, str) else start
+        range_size = int(size, 16) if isinstance(size, str) else size
+    except ValueError:
+        return {"error": f"Invalid start or size: {start}, {size}"}
+
+    range_end = range_start + range_size
+
+    if find_all:
+        # Use x64dbg's built-in findallmem which handles unmapped pages natively
+        cmd = f"findallmem {hex(range_start)}, {pattern}, {hex(range_size)}"
+        result = safe_get("ExecCommand", {"cmd": cmd, "offset": "0", "limit": "5000"}, timeout=120)
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except:
+                return {"error": "Failed to parse findallmem response", "raw": result[:500]}
+
+        if not isinstance(result, dict):
+            return {"error": "Unexpected response format"}
+
+        if not result.get("success", False):
+            return {"found": False, "addresses": [], "count": 0}
+
+        ref_view = result.get("refView", {})
+        rows = ref_view.get("rows", [])
+        addresses = []
+        for row in rows:
+            if row and len(row) > 0:
+                addr_str = row[0].strip()
+                if addr_str:
+                    addresses.append(f"0x{addr_str}" if not addr_str.startswith("0x") else addr_str)
+
+        return {
+            "found": len(addresses) > 0,
+            "addresses": addresses,
+            "count": len(addresses),
+        }
+
+    # Single find: walk accessible pages and call Pattern/FindMem per page
+    pages = _get_accessible_pages(range_start, range_end)
+    if not pages:
+        return {"found": False, "error": "No accessible pages in range", "pages_searched": 0}
+
+    pages_searched = 0
+    for page_start, page_size in pages:
+        pages_searched += 1
+        result = safe_get("Pattern/FindMem", {
+            "start": hex(page_start),
+            "size": hex(page_size),
+            "pattern": pattern,
+        }, timeout=30)
+
+        if isinstance(result, str) and result.startswith("0x"):
+            return {"found": True, "address": result, "pages_searched": pages_searched}
+
+    return {"found": False, "pages_searched": pages_searched}
 
 
 @mcp.tool()

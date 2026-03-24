@@ -1057,19 +1057,15 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                 else if (path == "/Pattern/FindMem") {
                     std::string startStr = queryParams["start"];
                     std::string sizeStr = queryParams["size"];
-                    std::string pattern = queryParams["pattern"];
-                    std::string Pattern = urlDecode(pattern);
-                    if (startStr.empty() || sizeStr.empty() || pattern.empty()) {
+                    std::string rawPattern = queryParams["pattern"];
+                    if (startStr.empty() || sizeStr.empty() || rawPattern.empty()) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing start, size, or pattern parameter");
                         continue;
                     }
-                    
+
+                    std::string pattern = urlDecode(rawPattern);
+
                     duint start = 0, size = 0;
-
-                    Pattern.erase(std::remove_if(pattern.begin(), pattern.end(), 
-                                  [](unsigned char c) { return std::isspace(c); }), 
-                    Pattern.end());
-
                     try {
                         if (startStr.substr(0, 2) == "0x") {
                             start = std::stoull(startStr.substr(2), nullptr, 16);
@@ -1085,8 +1081,8 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid start or size format");
                         continue;
                     }
-                    
-                    duint result = Script::Pattern::FindMem(start, size, Pattern.c_str());
+
+                    duint result = Script::Pattern::FindMem(start, size, pattern.c_str());
                     if (result != 0) {
                         std::stringstream ss;
                         ss << "0x" << std::hex << result;
