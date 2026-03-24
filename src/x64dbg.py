@@ -40,7 +40,6 @@ def safe_get(endpoint: str, params: dict = None, timeout: int = 15):
         response = requests.get(url, params=params, timeout=timeout)
         response.encoding = 'utf-8'
         if response.ok:
-            # Try to parse as JSON first
             try:
                 return response.json()
             except ValueError:
@@ -65,7 +64,6 @@ def safe_post(endpoint: str, data: dict | str, timeout: int = 15):
         response.encoding = 'utf-8'
         
         if response.ok:
-            # Try to parse as JSON first
             try:
                 return response.json()
             except ValueError:
@@ -173,16 +171,64 @@ def _block_to_dict(block: Any) -> Dict[str, Any]:
 _GPR_KEYS = {"cax", "ccx", "cdx", "cbx", "csp", "cbp", "csi", "cdi",
              "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "cip"}
 
+# Address range for game code (PE image base typical for 64-bit executables)
+_GAME_CODE_START = 0x140000000
+_GAME_CODE_END = 0x160000000
+_GAME_MODULE_NAME = "crimsondesert"
+
+
+def _parse_response_dict(result, error_msg: str = "Failed to parse response") -> dict:
+    """Parse a safe_get/safe_post result as a dict, handling JSON string responses."""
+    if isinstance(result, dict):
+        return result
+    if isinstance(result, str):
+        try:
+            return json.loads(result)
+        except Exception:
+            return {"error": error_msg, "raw": result}
+    return {"error": "Unexpected response format"}
+
+
+def _parse_response_list(result, error_msg: str = "Failed to parse response") -> list:
+    """Parse a safe_get/safe_post result as a list, handling JSON string responses."""
+    if isinstance(result, list):
+        return result
+    if isinstance(result, str):
+        try:
+            parsed = json.loads(result)
+            if isinstance(parsed, list):
+                return parsed
+            return [parsed]
+        except Exception:
+            return [{"error": error_msg, "raw": result}]
+    return [{"error": "Unexpected response format"}]
+
+
+def _read_memory_bytes(addr: str, size: int) -> bytes | None:
+    """Read memory and return as bytes, or None on failure."""
+    result = safe_get("Memory/Read", {"addr": addr, "size": str(size)})
+    hex_str = ""
+    if isinstance(result, dict) and "result" in result:
+        hex_str = result["result"]
+    elif isinstance(result, str):
+        hex_str = result
+    if not hex_str:
+        return None
+    try:
+        return _parse_hex_bytes(hex_str)
+    except ValueError:
+        return None
+
+
+def _is_game_code_addr(addr_int: int) -> bool:
+    """Check if an address falls within the game code range."""
+    return _GAME_CODE_START <= addr_int <= _GAME_CODE_END
+
 
 def _parse_hex_bytes(hex_str: str) -> bytes:
     """Normalize a hex string (with optional spaces/0x prefix) and convert to bytes."""
     return bytes.fromhex(hex_str.replace(" ", "").replace("0x", "").replace("0X", ""))
 
-
-def _format_hex_bytes(hex_str: str) -> str:
-    """Normalize a hex string and format as spaced uppercase hex bytes."""
-    raw = hex_str.replace("0x", "").replace("0X", "").replace(" ", "")
-    return " ".join(raw[i:i+2].upper() for i in range(0, len(raw), 2))
 
 
 @mcp.tool()
@@ -214,17 +260,8 @@ def IsDebugActive() -> bool:
     Returns:
         True if running, False otherwise
     """
-    result = safe_get("IsDebugActive")
-    if isinstance(result, dict) and "isRunning" in result:
-        return result["isRunning"] is True
-    if isinstance(result, str):
-        try:
-            import json
-            parsed = json.loads(result)
-            return parsed.get("isRunning", False) is True
-        except Exception:
-            return False
-    return False
+    result = _parse_response_dict(safe_get("IsDebugActive"))
+    return result.get("isRunning", False) is True
 
 @mcp.tool()
 def IsDebugging() -> bool:
@@ -234,17 +271,8 @@ def IsDebugging() -> bool:
     Returns:
         True if debugging, False otherwise
     """
-    result = safe_get("Is_Debugging")
-    if isinstance(result, dict) and "isDebugging" in result:
-        return result["isDebugging"] is True
-    if isinstance(result, str):
-        try:
-            import json
-            parsed = json.loads(result)
-            return parsed.get("isDebugging", False) is True
-        except Exception:
-            return False
-    return False
+    result = _parse_response_dict(safe_get("Is_Debugging"))
+    return result.get("isDebugging", False) is True
 
 @mcp.tool()
 def RegisterGet(register: str) -> str:
@@ -431,15 +459,7 @@ def AssemblerAssemble(addr: str, instruction: str) -> dict:
     Returns:
         Dictionary with assembly result
     """
-    result = safe_get("Assembler/Assemble", {"addr": addr, "instruction": instruction})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse assembly result", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Assembler/Assemble", {"addr": addr, "instruction": instruction}))
 
 @mcp.tool()
 def AssemblerAssembleMem(addr: str, instruction: str) -> str:
@@ -528,13 +548,8 @@ def FlagSet(flag: str, value: bool) -> str:
 
 def _get_accessible_pages(range_start: int, range_end: int) -> list:
     """Get list of (start, size) tuples for accessible pages in the given range."""
-    memmap = safe_get("MemoryMap", timeout=120)
-    if isinstance(memmap, str):
-        try:
-            memmap = json.loads(memmap)
-        except:
-            return []
-    if not isinstance(memmap, dict) or "pages" not in memmap:
+    memmap = _parse_response_dict(safe_get("MemoryMap", timeout=120))
+    if "error" in memmap or "pages" not in memmap:
         return []
 
     pages = []
@@ -588,15 +603,9 @@ def PatternFindMem(start: str, size: str, pattern: str, find_all: bool = False) 
     if find_all:
         # Use x64dbg's built-in findallmem which handles unmapped pages natively
         cmd = f"findallmem {hex(range_start)}, {pattern}, {hex(range_size)}"
-        result = safe_get("ExecCommand", {"cmd": cmd, "offset": "0", "limit": "5000"}, timeout=120)
-        if isinstance(result, str):
-            try:
-                result = json.loads(result)
-            except:
-                return {"error": "Failed to parse findallmem response", "raw": result[:500]}
-
-        if not isinstance(result, dict):
-            return {"error": "Unexpected response format"}
+        result = _parse_response_dict(
+            safe_get("ExecCommand", {"cmd": cmd, "offset": "0", "limit": "5000"}, timeout=120)
+        )
 
         if not result.get("success", False):
             return {"found": False, "addresses": [], "count": 0}
@@ -676,15 +685,7 @@ def DisasmGetInstructionRange(addr: str, count: int = 1) -> list:
     Returns:
         List of dictionaries containing instruction details
     """
-    result = safe_get("Disasm/GetInstructionRange", {"addr": addr, "count": str(count)})
-    if isinstance(result, list):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return [{"error": "Failed to parse disassembly result", "raw": result}]
-    return [{"error": "Unexpected response format"}]
+    return _parse_response_list(safe_get("Disasm/GetInstructionRange", {"addr": addr, "count": str(count)}))
 
 
 @mcp.tool()
@@ -695,15 +696,7 @@ def StepInWithDisasm() -> dict:
     Returns:
         Dictionary containing step result and current instruction info
     """
-    result = safe_get("Disasm/StepInWithDisasm")
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse step result", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Disasm/StepInWithDisasm"))
 
 
 @mcp.tool()
@@ -714,15 +707,7 @@ def GetModuleList() -> list:
     Returns:
         List of module information (name, base address, size, etc.)
     """
-    result = safe_get("GetModuleList", timeout=60)
-    if isinstance(result, list):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return [{"raw": result}]
-    return [{"error": "Unexpected response format"}]
+    return _parse_response_list(safe_get("GetModuleList", timeout=60))
 
 @mcp.tool()
 def QuerySymbols(module: str, offset: int = 0, limit: int = 5000) -> dict:
@@ -749,16 +734,7 @@ def QuerySymbols(module: str, offset: int = 0, limit: int = 5000) -> dict:
         "limit": str(limit),
     }
     
-    result = safe_get("SymbolEnum", params)
-    
-    # Parse JSON response if it's a string
-    if isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-
-    return result
+    return _parse_response_dict(safe_get("SymbolEnum", params))
 
 @mcp.tool()
 def ThreadContext(tids: str = "", max_stack: int = 4, filter_game: bool = True) -> dict:
@@ -778,14 +754,9 @@ def ThreadContext(tids: str = "", max_stack: int = 4, filter_game: bool = True) 
         - count: Number of threads inspected
         - threads: List of thread contexts with tid, name, rip, registers, callstack
     """
-    thread_list = safe_get("GetThreadList")
-    if isinstance(thread_list, str):
-        try:
-            thread_list = json.loads(thread_list)
-        except:
-            return {"error": "Failed to get thread list", "raw": thread_list}
-    if not isinstance(thread_list, dict) or "threads" not in thread_list:
-        return {"error": "Unexpected thread list format"}
+    thread_list = _parse_response_dict(safe_get("GetThreadList"))
+    if "error" in thread_list or "threads" not in thread_list:
+        return {"error": "Failed to get thread list", "raw": thread_list}
 
     all_threads = thread_list["threads"]
 
@@ -793,48 +764,28 @@ def ThreadContext(tids: str = "", max_stack: int = 4, filter_game: bool = True) 
         target_ids = set(tids.replace(" ", "").split(","))
         selected = [t for t in all_threads if str(t.get("threadId", "")) in target_ids]
     else:
-        # Auto-select: main thread + named threads + high-cycle threads
-        selected = []
-        for t in all_threads:
-            name = t.get("threadName", "")
-            if name:
-                selected.append(t)
+        selected = [t for t in all_threads if t.get("threadName", "")]
 
     results = []
     for t in selected:
         tid_str = str(t.get("threadId", ""))
-        params = {"tid": tid_str}
 
-        regs = safe_get("RegisterDump", params=params)
-        if isinstance(regs, str):
-            try:
-                regs = json.loads(regs)
-            except:
-                regs = {}
+        gpr = GetRegisterDump(filter="gpr", tid=tid_str)
+        rip = gpr.get("cip", "0")
 
-        rip = regs.get("cip", "0")
-        gpr = _filter_register_dump(regs, "gpr") if isinstance(regs, dict) else {}
+        stack_result = GetCallStack(max_depth=max_stack, tid=tid_str)
+        stack_entries = stack_result.get("entries", [])
 
-        stack = safe_get("GetCallStack", params=params, timeout=10)
-        if isinstance(stack, str):
-            try:
-                stack = json.loads(stack)
-            except:
-                stack = {}
-        stack_entries = []
-        if isinstance(stack, dict) and "entries" in stack:
-            entries = stack["entries"]
-            stack_entries = entries[:max_stack] if max_stack > 0 else entries
-
-        # Filter: skip threads with only system code if filter_game is on
         if filter_game and not tids:
             has_game_code = False
-            if isinstance(rip, str) and rip.startswith("0x14"):
-                has_game_code = True
-            else:
+            try:
+                rip_int = int(rip, 16) if isinstance(rip, str) else rip
+                has_game_code = _is_game_code_addr(rip_int)
+            except (ValueError, TypeError):
+                pass
+            if not has_game_code:
                 for frame in stack_entries:
-                    comment = frame.get("comment", "")
-                    if "crimsondesert" in comment.lower():
+                    if _GAME_MODULE_NAME in frame.get("comment", "").lower():
                         has_game_code = True
                         break
             if not has_game_code:
@@ -869,15 +820,7 @@ def GetThreadList() -> dict:
           startAddress, localBase, cip, suspendCount, priority, waitReason,
           lastError, cycles
     """
-    result = safe_get("GetThreadList")
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse thread list", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("GetThreadList"))
 
 @mcp.tool()
 def GetTebAddress(tid: str) -> dict:
@@ -891,15 +834,7 @@ def GetTebAddress(tid: str) -> dict:
     Returns:
         Dictionary with tid and tebAddress fields
     """
-    result = safe_get("GetTebAddress", {"tid": tid})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse TEB response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("GetTebAddress", {"tid": tid}))
 
 @mcp.tool()
 def MemoryBase(addr: str) -> dict:
@@ -912,31 +847,15 @@ def MemoryBase(addr: str) -> dict:
     Returns:
         Dictionary containing base_address and size of the module
     """
-    try:
-        # Make the request to the endpoint
-        result = safe_get("MemoryBase", {"addr": addr}, timeout=60)
-        
-        # Handle different response types
-        if isinstance(result, dict):
-            return result
-        elif isinstance(result, str):
-            try:
-                # Try to parse the string as JSON
-                return json.loads(result)
-            except:
-                # Fall back to string parsing if needed
-                if "," in result:
-                    parts = result.split(",")
-                    return {
-                        "base_address": parts[0],
-                        "size": parts[1]
-                    }
-                return {"raw_response": result}
-        
-        return {"error": "Unexpected response format"}
-            
-    except Exception as e:
-        return {"error": str(e)}
+    result = _parse_response_dict(safe_get("MemoryBase", {"addr": addr}, timeout=60))
+    if "error" not in result:
+        return result
+    # Fall back to comma-separated string parsing
+    raw = result.get("raw", "")
+    if isinstance(raw, str) and "," in raw:
+        parts = raw.split(",")
+        return {"base_address": parts[0], "size": parts[1]}
+    return result
         
 @mcp.tool()
 def SetPageRights(addr: str, rights: str) -> bool:
@@ -959,15 +878,11 @@ def SetPageRights(addr: str, rights: str) -> bool:
 
     if isinstance(result, dict):
         return result.get("success", False) is True
-
     if isinstance(result, str):
         try:
-            import json
-            parsed = json.loads(result)
-            return parsed.get("success", False) is True
+            return json.loads(result).get("success", False) is True
         except Exception:
             return result.strip().lower() in ("ok", "true", "success")
-
     return False
 
 
@@ -986,15 +901,7 @@ def StringGetAt(addr: str) -> dict:
         - found: Whether a string was detected at that address
         - string: The string content (empty if not found)
     """
-    result = safe_get("String/GetAt", {"addr": addr})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("String/GetAt", {"addr": addr}))
 
 
 @mcp.tool()
@@ -1019,15 +926,7 @@ def XrefGet(addr: str) -> dict:
           - type: Reference type ("data", "jmp", "call", or "none")
           - string: Optional string context at the referrer address
     """
-    result = safe_get("Xref/Get", {"addr": addr})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Xref/Get", {"addr": addr}))
 
 @mcp.tool()
 def XrefCount(addr: str) -> dict:
@@ -1043,15 +942,7 @@ def XrefCount(addr: str) -> dict:
         - address: The queried address
         - count: Number of cross-references
     """
-    result = safe_get("Xref/Count", {"addr": addr})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Xref/Count", {"addr": addr}))
 
 
 @mcp.tool()
@@ -1074,16 +965,9 @@ def GetMemoryMap(addr: str = "", protect: str = "", type: str = "", info: str = 
         - total: Total pages before filtering (if filtered)
         - pages: List of page objects with base, size, protect, type, and info
     """
-    result = safe_get("MemoryMap", timeout=120)
-
-    if isinstance(result, str):
-        try:
-            result = json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result[:500] if len(result) > 500 else result}
-
-    if not isinstance(result, dict):
-        return {"error": "Unexpected response format"}
+    result = _parse_response_dict(safe_get("MemoryMap", timeout=120))
+    if "error" in result:
+        return result
 
     pages = result.get("pages", [])
     total = len(pages)
@@ -1102,7 +986,7 @@ def GetMemoryMap(addr: str = "", protect: str = "", type: str = "", info: str = 
                 summary[key]["count"] += 1
                 try:
                     summary[key]["total_size"] += int(p.get("size", "0"), 16) if isinstance(p.get("size"), str) else p.get("size", 0)
-                except:
+                except (ValueError, TypeError):
                     pass
             return {
                 "total": total,
@@ -1123,10 +1007,10 @@ def GetMemoryMap(addr: str = "", protect: str = "", type: str = "", info: str = 
                     psize = int(p["size"], 16) if isinstance(p["size"], str) else p["size"]
                     if pbase <= target < pbase + psize:
                         matched.append(p)
-                except:
+                except (KeyError, ValueError, TypeError):
                     pass
             filtered = matched
-        except:
+        except (ValueError, TypeError):
             pass
 
     if protect:
@@ -1157,15 +1041,7 @@ def MemoryRemoteAlloc(size: str, addr: str = "0") -> dict:
         - address: The allocated memory address
         - size: The requested size
     """
-    result = safe_get("Memory/RemoteAlloc", {"addr": addr, "size": size})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Memory/RemoteAlloc", {"addr": addr, "size": size}))
 
 @mcp.tool()
 def MemoryRemoteFree(addr: str) -> dict:
@@ -1178,15 +1054,7 @@ def MemoryRemoteFree(addr: str) -> dict:
     Returns:
         Dictionary with success status
     """
-    result = safe_get("Memory/RemoteFree", {"addr": addr})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Memory/RemoteFree", {"addr": addr}))
 
 
 @mcp.tool()
@@ -1204,15 +1072,7 @@ def GetBranchDestination(addr: str) -> dict:
         - destination: The resolved target address
         - resolved: Whether the destination was successfully resolved
     """
-    result = safe_get("GetBranchDestination", {"addr": addr})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("GetBranchDestination", {"addr": addr}))
 
 
 @mcp.tool()
@@ -1233,21 +1093,16 @@ def GetCallStack(max_depth: int = 8, tid: str = "") -> dict:
           - comment: Auto-generated comment (function name, etc.)
     """
     params = {"tid": tid} if tid else {}
-    result = safe_get("GetCallStack", params=params, timeout=30)
-    if isinstance(result, str):
-        try:
-            result = json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    if isinstance(result, dict):
-        if max_depth > 0 and "entries" in result:
-            entries = result["entries"]
-            result = dict(result)
-            result["entries"] = entries[:max_depth]
-            if len(entries) > max_depth:
-                result["truncated"] = len(entries)
+    result = _parse_response_dict(safe_get("GetCallStack", params=params, timeout=30))
+    if "error" in result:
         return result
-    return {"error": "Unexpected response format"}
+    if max_depth > 0 and "entries" in result:
+        entries = result["entries"]
+        result = dict(result)
+        result["entries"] = entries[:max_depth]
+        if len(entries) > max_depth:
+            result["truncated"] = len(entries)
+    return result
 
 
 @mcp.tool()
@@ -1264,15 +1119,7 @@ def GetBreakpointList(type: str = "all") -> dict:
         - breakpoints: List of breakpoint objects with type, addr, enabled, singleshoot,
           active, name, module, hitCount, fastResume, silent, breakCondition, logText, commandText
     """
-    result = safe_get("Breakpoint/List", {"type": type})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Breakpoint/List", {"type": type}))
 
 
 @mcp.tool()
@@ -1288,15 +1135,7 @@ def LabelSet(addr: str, text: str) -> dict:
     Returns:
         Dictionary with success status, address, and label text
     """
-    result = safe_get("Label/Set", {"addr": addr, "text": text})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Label/Set", {"addr": addr, "text": text}))
 
 @mcp.tool()
 def LabelGet(addr: str) -> dict:
@@ -1312,15 +1151,7 @@ def LabelGet(addr: str) -> dict:
         - found: Whether a label exists at that address
         - label: The label text (empty if not found)
     """
-    result = safe_get("Label/Get", {"addr": addr})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Label/Get", {"addr": addr}))
 
 @mcp.tool()
 def LabelList() -> dict:
@@ -1332,15 +1163,7 @@ def LabelList() -> dict:
         - count: Number of labels
         - labels: List of label objects with module, rva, text, and manual fields
     """
-    result = safe_get("Label/List")
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Label/List"))
 
 
 @mcp.tool()
@@ -1356,15 +1179,7 @@ def CommentSet(addr: str, text: str) -> dict:
     Returns:
         Dictionary with success status and address
     """
-    result = safe_get("Comment/Set", {"addr": addr, "text": text})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Comment/Set", {"addr": addr, "text": text}))
 
 @mcp.tool()
 def CommentGet(addr: str) -> dict:
@@ -1380,15 +1195,7 @@ def CommentGet(addr: str) -> dict:
         - found: Whether a comment exists
         - comment: The comment text
     """
-    result = safe_get("Comment/Get", {"addr": addr})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Comment/Get", {"addr": addr}))
 
 
 def _filter_register_dump(dump: dict, mode: str = "gpr") -> dict:
@@ -1419,15 +1226,10 @@ def GetRegisterDump(filter: str = "gpr", tid: str = "") -> dict:
         Dictionary with register values
     """
     params = {"tid": tid} if tid else {}
-    result = safe_get("RegisterDump", params=params)
-    if isinstance(result, dict):
-        return _filter_register_dump(result, filter)
-    elif isinstance(result, str):
-        try:
-            return _filter_register_dump(json.loads(result), filter)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    result = _parse_response_dict(safe_get("RegisterDump", params=params))
+    if "error" in result:
+        return result
+    return _filter_register_dump(result, filter)
 
 
 @mcp.tool()
@@ -1443,15 +1245,7 @@ def SetHardwareBreakpoint(addr: str, type: str = "execute") -> dict:
     Returns:
         Dictionary with success status and address
     """
-    result = safe_get("Debug/SetHardwareBreakpoint", {"addr": addr, "type": type})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Debug/SetHardwareBreakpoint", {"addr": addr, "type": type}))
 
 @mcp.tool()
 def DeleteHardwareBreakpoint(addr: str) -> dict:
@@ -1464,15 +1258,7 @@ def DeleteHardwareBreakpoint(addr: str) -> dict:
     Returns:
         Dictionary with success status and address
     """
-    result = safe_get("Debug/DeleteHardwareBreakpoint", {"addr": addr})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Debug/DeleteHardwareBreakpoint", {"addr": addr}))
 
 
 @mcp.tool()
@@ -1487,15 +1273,7 @@ def EnumTcpConnections() -> dict:
         - connections: List of connection objects with remoteAddress, remotePort,
           localAddress, localPort, and state
     """
-    result = safe_get("EnumTcpConnections", timeout=30)
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("EnumTcpConnections", timeout=30))
 
 
 @mcp.tool()
@@ -1509,15 +1287,7 @@ def GetPatchList() -> dict:
         - count: Number of patches
         - patches: List of patch objects with module, address, oldByte, newByte
     """
-    result = safe_get("Patch/List")
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Patch/List"))
 
 @mcp.tool()
 def GetPatchAt(addr: str) -> dict:
@@ -1535,15 +1305,7 @@ def GetPatchAt(addr: str) -> dict:
         - oldByte: Original byte value (if patched)
         - newByte: Patched byte value (if patched)
     """
-    result = safe_get("Patch/Get", {"addr": addr})
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("Patch/Get", {"addr": addr}))
 
 
 @mcp.tool()
@@ -1559,15 +1321,7 @@ def EnumHandles() -> dict:
         - handles: List of handle objects with handle (hex), typeNumber,
           grantedAccess (hex), name, and typeName
     """
-    result = safe_get("EnumHandles", timeout=60)
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
-        try:
-            return json.loads(result)
-        except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+    return _parse_response_dict(safe_get("EnumHandles", timeout=60))
 
 @mcp.tool()
 def BreakpointContext(disasm_count: int = 5, callstack_depth: int = 6, tid: str = "") -> dict:
@@ -1588,39 +1342,16 @@ def BreakpointContext(disasm_count: int = 5, callstack_depth: int = 6, tid: str 
         - rip: Current instruction pointer (convenience)
         - tid: Thread ID queried (if specified)
     """
-    params = {"tid": tid} if tid else {}
-    regs = safe_get("RegisterDump", params=params)
-    if isinstance(regs, str):
-        try:
-            regs = json.loads(regs)
-        except:
-            return {"error": "Failed to get registers", "raw": regs}
-    if not isinstance(regs, dict):
-        return {"error": "Unexpected register response"}
+    gpr = GetRegisterDump(filter="gpr", tid=tid)
+    if "error" in gpr:
+        return {"error": "Failed to get registers", "raw": gpr}
 
-    rip = regs.get("cip", "0")
+    rip = gpr.get("cip", "0")
 
-    gpr = _filter_register_dump(regs, "gpr")
+    stack_result = GetCallStack(max_depth=callstack_depth, tid=tid)
+    stack_entries = stack_result.get("entries", [])
 
-    stack = safe_get("GetCallStack", params=params, timeout=30)
-    if isinstance(stack, str):
-        try:
-            stack = json.loads(stack)
-        except:
-            stack = {"error": stack}
-    stack_entries = []
-    if isinstance(stack, dict) and "entries" in stack:
-        entries = stack["entries"]
-        stack_entries = entries[:callstack_depth] if callstack_depth > 0 else entries
-
-    disasm = safe_get("Disasm/GetInstructionRange", {"addr": rip, "count": str(disasm_count)})
-    if isinstance(disasm, str):
-        try:
-            disasm = json.loads(disasm)
-        except:
-            disasm = [{"error": disasm}]
-    if not isinstance(disasm, list):
-        disasm = [disasm]
+    disasm = DisasmGetInstructionRange(addr=rip, count=disasm_count)
 
     result = {
         "rip": rip,
@@ -1668,31 +1399,22 @@ def RunUntilBreakpoint(target: str, max_attempts: int = 50, log_stacks: bool = T
     attempts = 0
 
     for attempt in range(max_attempts):
-        # Run
         safe_get("Debugger/Continue", timeout=5)
-        time.sleep(0.3)  # Give the debuggee time to hit something
+        time.sleep(0.3)
 
-        # Check RIP
-        regs = safe_get("RegisterDump")
-        if isinstance(regs, str):
-            try:
-                regs = json.loads(regs)
-            except:
-                continue
-        if not isinstance(regs, dict):
+        regs = _parse_response_dict(safe_get("RegisterDump"))
+        if "error" in regs:
             continue
 
         rip_str = regs.get("cip", "0")
         try:
             rip_int = int(rip_str, 16) if isinstance(rip_str, str) else rip_str
-        except:
+        except Exception:
             continue
 
         attempts = attempt + 1
 
-        # Check if we hit our target
         if rip_int == target_int:
-            # Hit! Get full context
             ctx = BreakpointContext(disasm_count=3, callstack_depth=8)
             return {
                 "hit": True,
@@ -1701,25 +1423,17 @@ def RunUntilBreakpoint(target: str, max_attempts: int = 50, log_stacks: bool = T
                 "stack_addresses": sorted([f"0x{a:X}" for a in game_code_addrs]),
             }
 
-        # Not our BP — read stack for interesting addresses
         if log_stacks:
-            stack = safe_get("GetCallStack", timeout=10)
-            if isinstance(stack, str):
-                try:
-                    stack = json.loads(stack)
-                except:
-                    stack = {}
-            if isinstance(stack, dict) and "entries" in stack:
-                for entry in stack["entries"]:
-                    for key in ("from", "to"):
-                        val = entry.get(key, "0")
-                        try:
-                            addr_int = int(val, 16) if isinstance(val, str) else val
-                        except:
-                            continue
-                        # Game code range: 0x140000000 - 0x160000000
-                        if 0x140000000 <= addr_int <= 0x160000000:
-                            game_code_addrs.add(addr_int)
+            stack_result = GetCallStack(max_depth=0)
+            for entry in stack_result.get("entries", []):
+                for key in ("from", "to"):
+                    val = entry.get(key, "0")
+                    try:
+                        addr_int = int(val, 16) if isinstance(val, str) else val
+                    except Exception:
+                        continue
+                    if _is_game_code_addr(addr_int):
+                        game_code_addrs.add(addr_int)
 
     return {
         "hit": False,
@@ -1752,23 +1466,9 @@ def MemoryReadValues(addr: str, count: int = 1, type: str = "qword") -> dict:
     sz = type_sizes.get(type, 8)
     total_bytes = sz * count
 
-    result = safe_get("Memory/Read", {"addr": addr, "size": str(total_bytes)})
-    if isinstance(result, dict):
-        if "result" in result:
-            hex_str = result["result"]
-        elif "error" in result:
-            return result
-        else:
-            return {"error": "Unexpected response", "raw": result}
-    elif isinstance(result, str):
-        hex_str = result
-    else:
-        return {"error": "Unexpected response format"}
-
-    try:
-        raw = _parse_hex_bytes(hex_str)
-    except ValueError:
-        return {"error": "Failed to parse hex", "raw": hex_str[:100]}
+    raw = _read_memory_bytes(addr, total_bytes)
+    if raw is None:
+        return {"error": "Failed to read memory at " + addr}
 
     values = []
     for i in range(count):
@@ -1822,24 +1522,13 @@ def FollowPointerChain(base: str, offsets: str) -> dict:
 
     hops = []
 
-    # For all offsets except the last: read pointer, add next offset
     for i, off in enumerate(offset_list):
         target = current + off
-        result = safe_get("Memory/Read", {"addr": hex(target), "size": "8"})
+        raw = _read_memory_bytes(hex(target), 8)
+        if raw is None or len(raw) < 8:
+            return {"hops": hops, "error": f"Failed to read at {hex(target)}"}
 
-        hex_str = ""
-        if isinstance(result, dict) and "result" in result:
-            hex_str = result["result"]
-        elif isinstance(result, str):
-            hex_str = result
-        else:
-            return {"hops": hops, "error": f"Failed to read at {hex(target)}", "raw": result}
-
-        try:
-            raw = _parse_hex_bytes(hex_str)
-            val = int.from_bytes(raw[:8], "little")
-        except (ValueError, IndexError):
-            return {"hops": hops, "error": f"Failed to parse value at {hex(target)}"}
+        val = int.from_bytes(raw[:8], "little")
 
         hops.append({"addr": hex(target), "value": hex(val)})
 
@@ -1870,34 +1559,18 @@ def DisasmGetInstructionRangeEx(addr: str, count: int = 10, show_bytes: bool = F
     Returns:
         List of instruction dicts. When show_bytes=True, each includes a "bytes" field.
     """
-    result = safe_get("Disasm/GetInstructionRange", {"addr": addr, "count": str(count)})
-    if isinstance(result, str):
-        try:
-            result = json.loads(result)
-        except:
-            return [{"error": "Failed to parse", "raw": result}]
-    if not isinstance(result, list):
-        return [{"error": "Unexpected format"}]
+    result = DisasmGetInstructionRange(addr=addr, count=count)
 
     if not show_bytes:
         return result
 
     # Bulk read: calculate total byte range from first to last instruction
-    if len(result) >= 2:
-        first = result[0]
-        last = result[-1]
+    if result and "address" in result[0]:
         try:
-            start_addr = int(first["address"], 16)
-            end_addr = int(last["address"], 16) + last.get("size", 1)
-            total_size = end_addr - start_addr
-            mem = safe_get("Memory/Read", {"addr": first["address"], "size": str(total_size)})
-            bulk_hex = ""
-            if isinstance(mem, dict) and "result" in mem:
-                bulk_hex = mem["result"]
-            elif isinstance(mem, str):
-                bulk_hex = mem
-            if bulk_hex:
-                bulk_bytes = _parse_hex_bytes(bulk_hex)
+            start_addr = int(result[0]["address"], 16)
+            end_addr = int(result[-1]["address"], 16) + result[-1].get("size", 1)
+            bulk_bytes = _read_memory_bytes(result[0]["address"], end_addr - start_addr)
+            if bulk_bytes:
                 for insn in result:
                     insn_offset = int(insn["address"], 16) - start_addr
                     insn_size = insn.get("size", 0)
@@ -1906,17 +1579,16 @@ def DisasmGetInstructionRangeEx(addr: str, count: int = 10, show_bytes: bool = F
                         insn["bytes"] = " ".join(f"{b:02X}" for b in chunk)
                 return result
         except (KeyError, ValueError, TypeError):
-            pass  # Fall through to per-instruction reads
+            pass
 
-    # Fallback: per-instruction reads (single instruction or bulk failed)
+    # Fallback: per-instruction reads
     for insn in result:
         insn_addr = insn.get("address", "")
         insn_size = insn.get("size", 0)
         if insn_addr and insn_size > 0:
-            mem = safe_get("Memory/Read", {"addr": insn_addr, "size": str(insn_size)})
-            hex_str = mem["result"] if isinstance(mem, dict) and "result" in mem else (mem if isinstance(mem, str) else "")
-            if hex_str:
-                insn["bytes"] = _format_hex_bytes(hex_str)
+            raw = _read_memory_bytes(insn_addr, insn_size)
+            if raw:
+                insn["bytes"] = " ".join(f"{b:02X}" for b in raw)
 
     return result
 
