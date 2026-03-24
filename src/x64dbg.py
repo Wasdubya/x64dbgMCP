@@ -174,6 +174,17 @@ _GPR_KEYS = {"cax", "ccx", "cdx", "cbx", "csp", "cbp", "csi", "cdi",
              "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "cip"}
 
 
+def _parse_hex_bytes(hex_str: str) -> bytes:
+    """Normalize a hex string (with optional spaces/0x prefix) and convert to bytes."""
+    return bytes.fromhex(hex_str.replace(" ", "").replace("0x", "").replace("0X", ""))
+
+
+def _format_hex_bytes(hex_str: str) -> str:
+    """Normalize a hex string and format as spaced uppercase hex bytes."""
+    raw = hex_str.replace("0x", "").replace("0X", "").replace(" ", "")
+    return " ".join(raw[i:i+2].upper() for i in range(0, len(raw), 2))
+
+
 @mcp.tool()
 def ExecCommand(cmd: str, offset: int = 0, limit: int = 100) -> dict:
     """
@@ -692,9 +703,7 @@ def ThreadContext(tids: str = "", max_stack: int = 4, filter_game: bool = True) 
         selected = []
         for t in all_threads:
             name = t.get("threadName", "")
-            is_main = name == "Main Thread"
-            is_named = bool(name) and name != ""
-            if is_main or is_named:
+            if name:
                 selected.append(t)
 
     results = []
@@ -710,7 +719,7 @@ def ThreadContext(tids: str = "", max_stack: int = 4, filter_game: bool = True) 
                 regs = {}
 
         rip = regs.get("cip", "0")
-        gpr = {k: v for k, v in regs.items() if k in _GPR_KEYS} if isinstance(regs, dict) else {}
+        gpr = _filter_register_dump(regs, "gpr") if isinstance(regs, dict) else {}
 
         stack = safe_get("GetCallStack", params=params, timeout=10)
         if isinstance(stack, str):
@@ -1288,12 +1297,12 @@ def CommentGet(addr: str) -> dict:
     return {"error": "Unexpected response format"}
 
 
-def _filter_register_dump(dump: dict, filter: str) -> dict:
-    if filter == "all":
+def _filter_register_dump(dump: dict, mode: str = "gpr") -> dict:
+    if mode == "all":
         return dump
-    if filter == "gpr":
+    if mode == "gpr":
         return {k: v for k, v in dump.items() if k in _GPR_KEYS}
-    if filter == "gpr+flags":
+    if mode == "gpr+flags":
         out = {k: v for k, v in dump.items() if k in _GPR_KEYS}
         if "flags" in dump:
             out["flags"] = dump["flags"]
@@ -1497,7 +1506,7 @@ def BreakpointContext(disasm_count: int = 5, callstack_depth: int = 6, tid: str 
 
     rip = regs.get("cip", "0")
 
-    gpr = {k: v for k, v in regs.items() if k in _GPR_KEYS}
+    gpr = _filter_register_dump(regs, "gpr")
 
     stack = safe_get("GetCallStack", params=params, timeout=30)
     if isinstance(stack, str):
@@ -1559,8 +1568,7 @@ def RunUntilBreakpoint(target: str, max_attempts: int = 50, log_stacks: bool = T
     target_int = int(target, 16) if isinstance(target, str) else target
     target_hex = f"0x{target_int:X}"
 
-    # Set breakpoint
-    bp_result = safe_get("Debugger/Breakpoint/Set", {"addr": target_hex})
+    safe_get("Debugger/Breakpoint/Set", {"addr": target_hex})
 
     game_code_addrs = set()
     attempts = 0
@@ -1663,10 +1671,8 @@ def MemoryReadValues(addr: str, count: int = 1, type: str = "qword") -> dict:
     else:
         return {"error": "Unexpected response format"}
 
-    # Parse hex string to bytes
-    hex_str = hex_str.replace(" ", "").replace("0x", "")
     try:
-        raw = bytes.fromhex(hex_str)
+        raw = _parse_hex_bytes(hex_str)
     except ValueError:
         return {"error": "Failed to parse hex", "raw": hex_str[:100]}
 
@@ -1713,7 +1719,7 @@ def FollowPointerChain(base: str, offsets: str) -> dict:
         if not o:
             continue
         try:
-            offset_list.append(int(o, 16) if o.startswith("0x") or o.startswith("0X") else int(o, 16))
+            offset_list.append(int(o, 16))
         except ValueError:
             return {"error": f"Invalid offset: {o}"}
 
@@ -1735,9 +1741,8 @@ def FollowPointerChain(base: str, offsets: str) -> dict:
         else:
             return {"hops": hops, "error": f"Failed to read at {hex(target)}", "raw": result}
 
-        hex_str = hex_str.replace(" ", "").replace("0x", "")
         try:
-            raw = bytes.fromhex(hex_str)
+            raw = _parse_hex_bytes(hex_str)
             val = int.from_bytes(raw[:8], "little")
         except (ValueError, IndexError):
             return {"hops": hops, "error": f"Failed to parse value at {hex(target)}"}
@@ -1783,19 +1788,41 @@ def DisasmGetInstructionRangeEx(addr: str, count: int = 10, show_bytes: bool = F
     if not show_bytes:
         return result
 
-    # Read bytes for each instruction
+    # Bulk read: calculate total byte range from first to last instruction
+    if len(result) >= 2:
+        first = result[0]
+        last = result[-1]
+        try:
+            start_addr = int(first["address"], 16)
+            end_addr = int(last["address"], 16) + last.get("size", 1)
+            total_size = end_addr - start_addr
+            mem = safe_get("Memory/Read", {"addr": first["address"], "size": str(total_size)})
+            bulk_hex = ""
+            if isinstance(mem, dict) and "result" in mem:
+                bulk_hex = mem["result"]
+            elif isinstance(mem, str):
+                bulk_hex = mem
+            if bulk_hex:
+                bulk_bytes = _parse_hex_bytes(bulk_hex)
+                for insn in result:
+                    insn_offset = int(insn["address"], 16) - start_addr
+                    insn_size = insn.get("size", 0)
+                    if insn_size > 0 and insn_offset >= 0 and insn_offset + insn_size <= len(bulk_bytes):
+                        chunk = bulk_bytes[insn_offset:insn_offset + insn_size]
+                        insn["bytes"] = " ".join(f"{b:02X}" for b in chunk)
+                return result
+        except (KeyError, ValueError, TypeError):
+            pass  # Fall through to per-instruction reads
+
+    # Fallback: per-instruction reads (single instruction or bulk failed)
     for insn in result:
         insn_addr = insn.get("address", "")
         insn_size = insn.get("size", 0)
         if insn_addr and insn_size > 0:
             mem = safe_get("Memory/Read", {"addr": insn_addr, "size": str(insn_size)})
-            if isinstance(mem, dict) and "result" in mem:
-                raw = mem["result"].replace("0x", "").replace(" ", "")
-                # Format as spaced hex bytes
-                insn["bytes"] = " ".join(raw[i:i+2].upper() for i in range(0, len(raw), 2))
-            elif isinstance(mem, str):
-                raw = mem.replace("0x", "").replace(" ", "")
-                insn["bytes"] = " ".join(raw[i:i+2].upper() for i in range(0, len(raw), 2))
+            hex_str = mem["result"] if isinstance(mem, dict) and "result" in mem else (mem if isinstance(mem, str) else "")
+            if hex_str:
+                insn["bytes"] = _format_hex_bytes(hex_str)
 
     return result
 
