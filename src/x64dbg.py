@@ -26,7 +26,7 @@ def set_x64dbg_server_url(url: str) -> None:
 
 mcp = FastMCP("x64dbg-mcp")
 
-def safe_get(endpoint: str, params: dict = None):
+def safe_get(endpoint: str, params: dict = None, timeout: int = 15):
     """
     Perform a GET request with optional query parameters.
     Returns parsed JSON if possible, otherwise text content
@@ -37,7 +37,7 @@ def safe_get(endpoint: str, params: dict = None):
     url = f"{x64dbg_server_url}{endpoint}"
 
     try:
-        response = requests.get(url, params=params, timeout=15)
+        response = requests.get(url, params=params, timeout=timeout)
         response.encoding = 'utf-8'
         if response.ok:
             # Try to parse as JSON first
@@ -50,7 +50,7 @@ def safe_get(endpoint: str, params: dict = None):
     except Exception as e:
         return f"Request failed: {str(e)}"
 
-def safe_post(endpoint: str, data: dict | str):
+def safe_post(endpoint: str, data: dict | str, timeout: int = 15):
     """
     Perform a POST request with data.
     Returns parsed JSON if possible, otherwise text content
@@ -58,9 +58,9 @@ def safe_post(endpoint: str, data: dict | str):
     try:
         url = f"{x64dbg_server_url}{endpoint}"
         if isinstance(data, dict):
-            response = requests.post(url, data=data, timeout=5)
+            response = requests.post(url, data=data, timeout=timeout)
         else:
-            response = requests.post(url, data=data.encode("utf-8"), timeout=5)
+            response = requests.post(url, data=data.encode("utf-8"), timeout=timeout)
         
         response.encoding = 'utf-8'
         
@@ -170,6 +170,10 @@ def _block_to_dict(block: Any) -> Dict[str, Any]:
     return {"type": str(btype or "unknown"), "raw": str(block)}
 
 
+_GPR_KEYS = {"cax", "ccx", "cdx", "cbx", "csp", "cbp", "csi", "cdi",
+             "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "cip"}
+
+
 @mcp.tool()
 def ExecCommand(cmd: str, offset: int = 0, limit: int = 100) -> dict:
     """
@@ -188,7 +192,7 @@ def ExecCommand(cmd: str, offset: int = 0, limit: int = 100) -> dict:
           - rows: List of rows (paginated), where each row is a list of cell strings
                   (typically [address, disassembly] or [address, disassembly, string_address, string])
     """
-    return safe_get("ExecCommand", {"cmd": cmd, "offset": offset, "limit": limit})
+    return safe_get("ExecCommand", {"cmd": cmd, "offset": offset, "limit": limit}, timeout=60)
 
 
 @mcp.tool()
@@ -605,7 +609,7 @@ def GetModuleList() -> list:
     Returns:
         List of module information (name, base address, size, etc.)
     """
-    result = safe_get("GetModuleList")
+    result = safe_get("GetModuleList", timeout=60)
     if isinstance(result, list):
         return result
     elif isinstance(result, str):
@@ -648,8 +652,106 @@ def QuerySymbols(module: str, offset: int = 0, limit: int = 5000) -> dict:
             return json.loads(result)
         except:
             return {"error": "Failed to parse response", "raw": result}
-    
+
     return result
+
+@mcp.tool()
+def ThreadContext(tids: str = "", max_stack: int = 4, filter_game: bool = True) -> dict:
+    """
+    Get register + call stack context for one or more threads in one call.
+    Much more useful than GetThreadList for understanding what threads are doing.
+
+    Parameters:
+        tids: Comma-separated thread IDs to inspect (e.g. "49948,11960,35888").
+              If empty, inspects all named game threads + main thread.
+        max_stack: Maximum call stack frames per thread (default: 4)
+        filter_game: If true and tids is empty, only show threads with game code
+                     in their RIP or call stack (skip pure system waits). Default: true.
+
+    Returns:
+        Dictionary with:
+        - count: Number of threads inspected
+        - threads: List of thread contexts with tid, name, rip, registers, callstack
+    """
+    thread_list = safe_get("GetThreadList")
+    if isinstance(thread_list, str):
+        try:
+            thread_list = json.loads(thread_list)
+        except:
+            return {"error": "Failed to get thread list", "raw": thread_list}
+    if not isinstance(thread_list, dict) or "threads" not in thread_list:
+        return {"error": "Unexpected thread list format"}
+
+    all_threads = thread_list["threads"]
+
+    if tids:
+        target_ids = set(tids.replace(" ", "").split(","))
+        selected = [t for t in all_threads if str(t.get("threadId", "")) in target_ids]
+    else:
+        # Auto-select: main thread + named threads + high-cycle threads
+        selected = []
+        for t in all_threads:
+            name = t.get("threadName", "")
+            is_main = name == "Main Thread"
+            is_named = bool(name) and name != ""
+            if is_main or is_named:
+                selected.append(t)
+
+    results = []
+    for t in selected:
+        tid_str = str(t.get("threadId", ""))
+        params = {"tid": tid_str}
+
+        regs = safe_get("RegisterDump", params=params)
+        if isinstance(regs, str):
+            try:
+                regs = json.loads(regs)
+            except:
+                regs = {}
+
+        rip = regs.get("cip", "0")
+        gpr = {k: v for k, v in regs.items() if k in _GPR_KEYS} if isinstance(regs, dict) else {}
+
+        stack = safe_get("GetCallStack", params=params, timeout=10)
+        if isinstance(stack, str):
+            try:
+                stack = json.loads(stack)
+            except:
+                stack = {}
+        stack_entries = []
+        if isinstance(stack, dict) and "entries" in stack:
+            entries = stack["entries"]
+            stack_entries = entries[:max_stack] if max_stack > 0 else entries
+
+        # Filter: skip threads with only system code if filter_game is on
+        if filter_game and not tids:
+            has_game_code = False
+            if isinstance(rip, str) and rip.startswith("0x14"):
+                has_game_code = True
+            else:
+                for frame in stack_entries:
+                    comment = frame.get("comment", "")
+                    if "crimsondesert" in comment.lower():
+                        has_game_code = True
+                        break
+            if not has_game_code:
+                continue
+
+        results.append({
+            "tid": t.get("threadId"),
+            "name": t.get("threadName", ""),
+            "number": t.get("threadNumber"),
+            "priority": t.get("priority", ""),
+            "cycles": t.get("cycles", 0),
+            "rip": rip,
+            "registers": gpr,
+            "callstack": stack_entries,
+        })
+
+    return {
+        "count": len(results),
+        "threads": results,
+    }
 
 @mcp.tool()
 def GetThreadList() -> dict:
@@ -709,7 +811,7 @@ def MemoryBase(addr: str) -> dict:
     """
     try:
         # Make the request to the endpoint
-        result = safe_get("MemoryBase", {"addr": addr})
+        result = safe_get("MemoryBase", {"addr": addr}, timeout=60)
         
         # Handle different response types
         if isinstance(result, dict):
@@ -850,26 +952,91 @@ def XrefCount(addr: str) -> dict:
 
 
 @mcp.tool()
-def GetMemoryMap() -> dict:
+def GetMemoryMap(addr: str = "", protect: str = "", type: str = "", info: str = "") -> dict:
     """
-    Get the full virtual memory map of the debugged process.
-    Returns all memory pages with their base address, size, protection, type, and info.
-    
+    Get the virtual memory map of the debugged process with optional filtering.
+    Without filters, returns ALL pages (can be very large). Use filters for performance.
+
+    Parameters:
+        addr: Filter to pages containing this address (hex, e.g. "0x14CC58F00").
+              Returns the page that contains the address plus its neighbors.
+        protect: Filter by protection flags substring (e.g. "ERW", "ER-", "-RW", "E").
+                 Only pages whose protect string contains this value are returned.
+        type: Filter by memory type (e.g. "IMG", "MAP", "PRV").
+        info: Filter by info/module name substring (case-insensitive, e.g. "crimson", ".exe").
+
     Returns:
         Dictionary with:
-        - count: Number of memory pages
-        - pages: List of page objects with base, size, protect (ERW/ER-/-RW/-R-/E--/---),
-          type (IMG/MAP/PRV), and info (module name or description)
+        - count: Number of matching memory pages
+        - total: Total pages before filtering (if filtered)
+        - pages: List of page objects with base, size, protect, type, and info
     """
-    result = safe_get("MemoryMap")
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
+    result = safe_get("MemoryMap", timeout=120)
+
+    if isinstance(result, str):
         try:
-            return json.loads(result)
+            result = json.loads(result)
         except:
-            return {"error": "Failed to parse response", "raw": result}
-    return {"error": "Unexpected response format"}
+            return {"error": "Failed to parse response", "raw": result[:500] if len(result) > 500 else result}
+
+    if not isinstance(result, dict):
+        return {"error": "Unexpected response format"}
+
+    pages = result.get("pages", [])
+    total = len(pages)
+
+    # Apply filters
+    has_filter = any([addr, protect, type, info])
+    if not has_filter:
+        # No filters: return summary instead of full dump to avoid overwhelming output
+        if total > 200:
+            # Summarize by type/protect
+            summary = {}
+            for p in pages:
+                key = f"{p.get('type', '?')}:{p.get('protect', '?')}"
+                if key not in summary:
+                    summary[key] = {"count": 0, "total_size": 0, "example_base": p.get("base", "?")}
+                summary[key]["count"] += 1
+                try:
+                    summary[key]["total_size"] += int(p.get("size", "0"), 16) if isinstance(p.get("size"), str) else p.get("size", 0)
+                except:
+                    pass
+            return {
+                "total": total,
+                "summary": summary,
+                "hint": "Use filters (addr, protect, type, info) to get specific pages. Example: protect='ERW' or addr='0x14CC58F00'"
+            }
+        return {"count": total, "pages": pages}
+
+    filtered = pages
+
+    if addr:
+        try:
+            target = int(addr, 16) if isinstance(addr, str) else addr
+            matched = []
+            for p in filtered:
+                try:
+                    pbase = int(p["base"], 16) if isinstance(p["base"], str) else p["base"]
+                    psize = int(p["size"], 16) if isinstance(p["size"], str) else p["size"]
+                    if pbase <= target < pbase + psize:
+                        matched.append(p)
+                except:
+                    pass
+            filtered = matched
+        except:
+            pass
+
+    if protect:
+        filtered = [p for p in filtered if protect in p.get("protect", "")]
+
+    if type:
+        filtered = [p for p in filtered if type.upper() == p.get("type", "").upper()]
+
+    if info:
+        info_lower = info.lower()
+        filtered = [p for p in filtered if info_lower in p.get("info", "").lower()]
+
+    return {"count": len(filtered), "total": total, "pages": filtered}
 
 
 @mcp.tool()
@@ -946,28 +1113,37 @@ def GetBranchDestination(addr: str) -> dict:
 
 
 @mcp.tool()
-def GetCallStack() -> dict:
+def GetCallStack(max_depth: int = 8, tid: str = "") -> dict:
     """
     Get the current call stack of the debugged thread.
-    Returns the full stack trace with addresses, return addresses, and comments.
-    
+
+    Parameters:
+        max_depth: Maximum number of stack frames to return (default: 8, 0=all)
+        tid: Thread ID to query (default: current thread). Use GetThreadList to find IDs.
+
     Returns:
         Dictionary with:
-        - total: Number of stack frames
-        - entries: List of call stack entries, each with:
-          - addr: Current address in the frame
+        - total: Total number of stack frames
+        - entries: List of call stack entries (truncated to max_depth), each with:
           - from: Return address (caller)
           - to: Called address (callee)
           - comment: Auto-generated comment (function name, etc.)
     """
-    result = safe_get("GetCallStack")
-    if isinstance(result, dict):
-        return result
-    elif isinstance(result, str):
+    params = {"tid": tid} if tid else {}
+    result = safe_get("GetCallStack", params=params, timeout=30)
+    if isinstance(result, str):
         try:
-            return json.loads(result)
+            result = json.loads(result)
         except:
             return {"error": "Failed to parse response", "raw": result}
+    if isinstance(result, dict):
+        if max_depth > 0 and "entries" in result:
+            entries = result["entries"]
+            result = dict(result)
+            result["entries"] = entries[:max_depth]
+            if len(entries) > max_depth:
+                result["truncated"] = len(entries)
+        return result
     return {"error": "Unexpected response format"}
 
 
@@ -1112,26 +1288,40 @@ def CommentGet(addr: str) -> dict:
     return {"error": "Unexpected response format"}
 
 
+def _filter_register_dump(dump: dict, filter: str) -> dict:
+    if filter == "all":
+        return dump
+    if filter == "gpr":
+        return {k: v for k, v in dump.items() if k in _GPR_KEYS}
+    if filter == "gpr+flags":
+        out = {k: v for k, v in dump.items() if k in _GPR_KEYS}
+        if "flags" in dump:
+            out["flags"] = dump["flags"]
+        return out
+    return dump
+
+
 @mcp.tool()
-def GetRegisterDump() -> dict:
+def GetRegisterDump(filter: str = "gpr", tid: str = "") -> dict:
     """
-    Get a complete dump of all CPU registers in one call.
-    Returns general purpose registers, segment registers, debug registers,
-    flags, and last error/status information.
-    
-    Much more efficient than reading registers individually.
-    
+    Get CPU registers.
+
+    Parameters:
+        filter: What to return - "gpr" (default: rax-r15 + rip only),
+                "gpr+flags" (gpr + CPU flags), or "all" (everything including
+                segment regs, debug regs, lastError/lastStatus)
+        tid: Thread ID to query (default: current thread). Use GetThreadList to find IDs.
+
     Returns:
-        Dictionary with all register values (cax/ccx/cdx/cbx/csp/cbp/csi/cdi,
-        r8-r15 on x64, cip, eflags, segment regs, debug regs, flags object,
-        lastError, lastStatus)
+        Dictionary with register values
     """
-    result = safe_get("RegisterDump")
+    params = {"tid": tid} if tid else {}
+    result = safe_get("RegisterDump", params=params)
     if isinstance(result, dict):
-        return result
+        return _filter_register_dump(result, filter)
     elif isinstance(result, str):
         try:
-            return json.loads(result)
+            return _filter_register_dump(json.loads(result), filter)
         except:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
@@ -1194,7 +1384,7 @@ def EnumTcpConnections() -> dict:
         - connections: List of connection objects with remoteAddress, remotePort,
           localAddress, localPort, and state
     """
-    result = safe_get("EnumTcpConnections")
+    result = safe_get("EnumTcpConnections", timeout=30)
     if isinstance(result, dict):
         return result
     elif isinstance(result, str):
@@ -1266,7 +1456,7 @@ def EnumHandles() -> dict:
         - handles: List of handle objects with handle (hex), typeNumber,
           grantedAccess (hex), name, and typeName
     """
-    result = safe_get("EnumHandles")
+    result = safe_get("EnumHandles", timeout=60)
     if isinstance(result, dict):
         return result
     elif isinstance(result, str):
@@ -1275,6 +1465,340 @@ def EnumHandles() -> dict:
         except:
             return {"error": "Failed to parse response", "raw": result}
     return {"error": "Unexpected response format"}
+
+@mcp.tool()
+def BreakpointContext(disasm_count: int = 5, callstack_depth: int = 6, tid: str = "") -> dict:
+    """
+    Get full context after a breakpoint hit in one call.
+    Combines GPR registers + call stack + disassembly around RIP.
+
+    Parameters:
+        disasm_count: Number of instructions to disassemble starting before RIP (default: 5)
+        callstack_depth: Max call stack frames (default: 6, 0=all)
+        tid: Thread ID to query (default: current thread). Use GetThreadList to find IDs.
+
+    Returns:
+        Dictionary with:
+        - registers: GPR values (rax-r15, rip)
+        - callstack: Call stack entries (truncated)
+        - disasm: Disassembly around RIP
+        - rip: Current instruction pointer (convenience)
+        - tid: Thread ID queried (if specified)
+    """
+    params = {"tid": tid} if tid else {}
+    regs = safe_get("RegisterDump", params=params)
+    if isinstance(regs, str):
+        try:
+            regs = json.loads(regs)
+        except:
+            return {"error": "Failed to get registers", "raw": regs}
+    if not isinstance(regs, dict):
+        return {"error": "Unexpected register response"}
+
+    rip = regs.get("cip", "0")
+
+    gpr = {k: v for k, v in regs.items() if k in _GPR_KEYS}
+
+    stack = safe_get("GetCallStack", params=params, timeout=30)
+    if isinstance(stack, str):
+        try:
+            stack = json.loads(stack)
+        except:
+            stack = {"error": stack}
+    stack_entries = []
+    if isinstance(stack, dict) and "entries" in stack:
+        entries = stack["entries"]
+        stack_entries = entries[:callstack_depth] if callstack_depth > 0 else entries
+
+    disasm = safe_get("Disasm/GetInstructionRange", {"addr": rip, "count": str(disasm_count)})
+    if isinstance(disasm, str):
+        try:
+            disasm = json.loads(disasm)
+        except:
+            disasm = [{"error": disasm}]
+    if not isinstance(disasm, list):
+        disasm = [disasm]
+
+    result = {
+        "rip": rip,
+        "registers": gpr,
+        "callstack": stack_entries,
+        "disasm": disasm,
+    }
+    if tid:
+        result["tid"] = tid
+    return result
+
+
+@mcp.tool()
+def RunUntilBreakpoint(target: str, max_attempts: int = 50, log_stacks: bool = True) -> dict:
+    """
+    Run the debuggee, automatically skipping Themida exceptions until the target
+    breakpoint is hit. At each exception stop, reads the call stack for useful
+    game-code addresses (logged but not returned unless relevant).
+
+    Sets a software breakpoint on target, then loops: run -> check RIP -> if not
+    target, read stack and continue. Stops when RIP matches target or max_attempts
+    is reached.
+
+    Parameters:
+        target: Target breakpoint address (hex, e.g. "0x140F51EC0")
+        max_attempts: Maximum exception skips before giving up (default: 50)
+        log_stacks: Log game-code addresses seen on exception stacks (default: True)
+
+    Returns:
+        Dictionary with:
+        - hit: Whether the breakpoint was hit
+        - attempts: Number of exceptions skipped
+        - context: BreakpointContext at the hit (if hit=True)
+        - stack_addresses: Unique game-code addresses seen on exception stacks
+        - error: Error message (if any)
+    """
+    import time
+
+    target_int = int(target, 16) if isinstance(target, str) else target
+    target_hex = f"0x{target_int:X}"
+
+    # Set breakpoint
+    bp_result = safe_get("Debugger/Breakpoint/Set", {"addr": target_hex})
+
+    game_code_addrs = set()
+    attempts = 0
+
+    for attempt in range(max_attempts):
+        # Run
+        safe_get("Debugger/Continue", timeout=5)
+        time.sleep(0.3)  # Give the debuggee time to hit something
+
+        # Check RIP
+        regs = safe_get("RegisterDump")
+        if isinstance(regs, str):
+            try:
+                regs = json.loads(regs)
+            except:
+                continue
+        if not isinstance(regs, dict):
+            continue
+
+        rip_str = regs.get("cip", "0")
+        try:
+            rip_int = int(rip_str, 16) if isinstance(rip_str, str) else rip_str
+        except:
+            continue
+
+        attempts = attempt + 1
+
+        # Check if we hit our target
+        if rip_int == target_int:
+            # Hit! Get full context
+            ctx = BreakpointContext(disasm_count=3, callstack_depth=8)
+            return {
+                "hit": True,
+                "attempts": attempts,
+                "context": ctx,
+                "stack_addresses": sorted([f"0x{a:X}" for a in game_code_addrs]),
+            }
+
+        # Not our BP — read stack for interesting addresses
+        if log_stacks:
+            stack = safe_get("GetCallStack", timeout=10)
+            if isinstance(stack, str):
+                try:
+                    stack = json.loads(stack)
+                except:
+                    stack = {}
+            if isinstance(stack, dict) and "entries" in stack:
+                for entry in stack["entries"]:
+                    for key in ("from", "to"):
+                        val = entry.get(key, "0")
+                        try:
+                            addr_int = int(val, 16) if isinstance(val, str) else val
+                        except:
+                            continue
+                        # Game code range: 0x140000000 - 0x160000000
+                        if 0x140000000 <= addr_int <= 0x160000000:
+                            game_code_addrs.add(addr_int)
+
+    return {
+        "hit": False,
+        "attempts": attempts,
+        "context": None,
+        "stack_addresses": sorted([f"0x{a:X}" for a in game_code_addrs]),
+        "error": f"Breakpoint at {target_hex} not hit after {max_attempts} attempts",
+    }
+
+
+@mcp.tool()
+def MemoryReadValues(addr: str, count: int = 1, type: str = "qword") -> dict:
+    """
+    Read memory and interpret as typed values (pointers, integers).
+    Much more useful than raw hex for RE work.
+
+    Parameters:
+        addr: Start address (hex format, e.g. "0x1000")
+        count: Number of values to read (default: 1)
+        type: Value type - "qword" (8 bytes, default), "dword" (4 bytes),
+              "word" (2 bytes), "byte" (1 byte)
+
+    Returns:
+        Dictionary with:
+        - addr: Start address
+        - type: Value type used
+        - values: List of {"offset": hex_offset, "value": hex_value} entries
+    """
+    type_sizes = {"byte": 1, "word": 2, "dword": 4, "qword": 8}
+    sz = type_sizes.get(type, 8)
+    total_bytes = sz * count
+
+    result = safe_get("Memory/Read", {"addr": addr, "size": str(total_bytes)})
+    if isinstance(result, dict):
+        if "result" in result:
+            hex_str = result["result"]
+        elif "error" in result:
+            return result
+        else:
+            return {"error": "Unexpected response", "raw": result}
+    elif isinstance(result, str):
+        hex_str = result
+    else:
+        return {"error": "Unexpected response format"}
+
+    # Parse hex string to bytes
+    hex_str = hex_str.replace(" ", "").replace("0x", "")
+    try:
+        raw = bytes.fromhex(hex_str)
+    except ValueError:
+        return {"error": "Failed to parse hex", "raw": hex_str[:100]}
+
+    values = []
+    for i in range(count):
+        chunk = raw[i * sz:(i + 1) * sz]
+        if len(chunk) < sz:
+            break
+        val = int.from_bytes(chunk, "little")
+        values.append({"offset": hex(i * sz), "value": hex(val)})
+
+    return {"addr": addr, "type": type, "values": values}
+
+
+@mcp.tool()
+def FollowPointerChain(base: str, offsets: str) -> dict:
+    """
+    Follow a pointer chain from a base address through a series of offsets.
+    Example: base="0x1400000", offsets="0x68,0x20,0xD0" follows:
+      [[[0x1400000]+0x68]+0x20]+0xD0
+
+    At each step, reads a qword pointer and adds the next offset.
+    The last offset is NOT dereferenced (returns the final address + value).
+
+    Parameters:
+        base: Starting address (hex format, e.g. "0x38c3eab0000")
+        offsets: Comma-separated hex offsets (e.g. "0x68,0x20,0xD0")
+
+    Returns:
+        Dictionary with:
+        - hops: List of {"addr": address_read_from, "value": value_at_addr} for each step
+        - final_addr: The final computed address
+        - final_value: The qword value at the final address
+        - error: Error message if chain broke at some point
+    """
+    try:
+        current = int(base, 16) if isinstance(base, str) else base
+    except ValueError:
+        return {"error": f"Invalid base address: {base}"}
+
+    offset_list = []
+    for o in offsets.split(","):
+        o = o.strip()
+        if not o:
+            continue
+        try:
+            offset_list.append(int(o, 16) if o.startswith("0x") or o.startswith("0X") else int(o, 16))
+        except ValueError:
+            return {"error": f"Invalid offset: {o}"}
+
+    if not offset_list:
+        return {"error": "No offsets provided"}
+
+    hops = []
+
+    # For all offsets except the last: read pointer, add next offset
+    for i, off in enumerate(offset_list):
+        target = current + off
+        result = safe_get("Memory/Read", {"addr": hex(target), "size": "8"})
+
+        hex_str = ""
+        if isinstance(result, dict) and "result" in result:
+            hex_str = result["result"]
+        elif isinstance(result, str):
+            hex_str = result
+        else:
+            return {"hops": hops, "error": f"Failed to read at {hex(target)}", "raw": result}
+
+        hex_str = hex_str.replace(" ", "").replace("0x", "")
+        try:
+            raw = bytes.fromhex(hex_str)
+            val = int.from_bytes(raw[:8], "little")
+        except (ValueError, IndexError):
+            return {"hops": hops, "error": f"Failed to parse value at {hex(target)}"}
+
+        hops.append({"addr": hex(target), "value": hex(val)})
+
+        if i < len(offset_list) - 1:
+            # Dereference: follow the pointer
+            current = val
+        else:
+            # Last offset: return the final address and value
+            return {
+                "hops": hops,
+                "final_addr": hex(target),
+                "final_value": hex(val),
+            }
+
+    return {"hops": hops, "error": "Unexpected end of chain"}
+
+
+@mcp.tool()
+def DisasmGetInstructionRangeEx(addr: str, count: int = 10, show_bytes: bool = False) -> list:
+    """
+    Disassemble instructions with optional raw bytes (for AOB pattern creation).
+
+    Parameters:
+        addr: Memory address (hex format, e.g. "0x1000")
+        count: Number of instructions (default: 10, max: 100)
+        show_bytes: Include raw bytes for each instruction (default: False)
+
+    Returns:
+        List of instruction dicts. When show_bytes=True, each includes a "bytes" field.
+    """
+    result = safe_get("Disasm/GetInstructionRange", {"addr": addr, "count": str(count)})
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except:
+            return [{"error": "Failed to parse", "raw": result}]
+    if not isinstance(result, list):
+        return [{"error": "Unexpected format"}]
+
+    if not show_bytes:
+        return result
+
+    # Read bytes for each instruction
+    for insn in result:
+        insn_addr = insn.get("address", "")
+        insn_size = insn.get("size", 0)
+        if insn_addr and insn_size > 0:
+            mem = safe_get("Memory/Read", {"addr": insn_addr, "size": str(insn_size)})
+            if isinstance(mem, dict) and "result" in mem:
+                raw = mem["result"].replace("0x", "").replace(" ", "")
+                # Format as spaced hex bytes
+                insn["bytes"] = " ".join(raw[i:i+2].upper() for i in range(0, len(raw), 2))
+            elif isinstance(mem, str):
+                raw = mem.replace("0x", "").replace(" ", "")
+                insn["bytes"] = " ".join(raw[i:i+2].upper() for i in range(0, len(raw), 2))
+
+    return result
+
 
 import argparse
 
