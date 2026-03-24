@@ -344,7 +344,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing command parameter");
                         continue;
                     }
-                    
+
                     // Snapshot the references tab row count before the command
                     int refRowCountBefore = GuiReferenceGetRowCount();
 
@@ -459,6 +459,12 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     _plugin_logprintf("DbgIsDebugging() called, result: %s\n", isDebugging ? "true" : "false");
                     std::stringstream ss;
                     ss << "{\"isDebugging\":" << (isDebugging ? "true" : "false") << "}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                else if (path == "/Debug/GetProcessId") {
+                    DWORD pid = DbgGetProcessId();
+                    std::stringstream ss;
+                    ss << "{\"pid\":" << pid << "}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
                 else if (path == "/Register/Get") {
@@ -1582,6 +1588,323 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     
                     ss << "]}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                else if (path == "/Memory/WorkingSet") {
+                    std::string addrStr = queryParams["addr"];
+                    if (addrStr.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'addr' parameter\"}");
+                        continue;
+                    }
+
+                    duint addr = 0;
+                    try {
+                        addr = std::stoull(addrStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid address format\"}");
+                        continue;
+                    }
+
+                    // Get process handle
+                    HANDLE hProc = DbgGetProcessHandle();
+                    if (hProc == NULL || hProc == INVALID_HANDLE_VALUE) {
+                        sendHttpResponse(clientSocket, 500, "application/json",
+                            "{\"error\":\"Failed to get process handle\"}");
+                        continue;
+                    }
+
+                    // Define types for NtQueryVirtualMemory
+                    typedef LONG NTSTATUS;
+                    #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+
+                    typedef enum _MEMORY_INFORMATION_CLASS_EX {
+                        MemoryBasicInformationEx = 0,
+                        MemoryWorkingSetExInformation = 4
+                    } MEMORY_INFORMATION_CLASS_EX;
+
+                    typedef union _MEMORY_WORKING_SET_EX_BLOCK {
+                        ULONG_PTR Flags;
+                        struct {
+                            ULONG_PTR Valid : 1;
+                            ULONG_PTR ShareCount : 3;
+                            ULONG_PTR Win32Protection : 11;
+                            ULONG_PTR Shared : 1;
+                            ULONG_PTR Node : 6;
+                            ULONG_PTR Locked : 1;
+                            ULONG_PTR LargePage : 1;
+                            ULONG_PTR Priority : 3;
+                            ULONG_PTR Reserved : 3;
+                            ULONG_PTR SharedOriginal : 1;
+                            ULONG_PTR Bad : 1;
+#ifdef _WIN64
+                            ULONG_PTR Win32GraphicsProtection : 4;
+                            ULONG_PTR ReservedUlong : 28;
+#endif
+                        };
+                    } MEMORY_WORKING_SET_EX_BLOCK, *PMEMORY_WORKING_SET_EX_BLOCK;
+
+                    typedef struct _MEMORY_WORKING_SET_EX_INFORMATION {
+                        PVOID VirtualAddress;
+                        MEMORY_WORKING_SET_EX_BLOCK VirtualAttributes;
+                    } MEMORY_WORKING_SET_EX_INFORMATION, *PMEMORY_WORKING_SET_EX_INFORMATION;
+
+                    typedef NTSTATUS(WINAPI* pNtQueryVirtualMemory)(
+                        HANDLE ProcessHandle,
+                        PVOID BaseAddress,
+                        ULONG MemoryInformationClass,
+                        PVOID MemoryInformation,
+                        SIZE_T MemoryInformationLength,
+                        PSIZE_T ReturnLength
+                    );
+
+                    static pNtQueryVirtualMemory NtQueryVirtualMemory = nullptr;
+                    if (NtQueryVirtualMemory == nullptr) {
+                        HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+                        if (hNtdll) {
+                            NtQueryVirtualMemory = (pNtQueryVirtualMemory)GetProcAddress(hNtdll, "NtQueryVirtualMemory");
+                        }
+                    }
+
+                    if (NtQueryVirtualMemory == nullptr) {
+                        sendHttpResponse(clientSocket, 500, "application/json",
+                            "{\"error\":\"Failed to get NtQueryVirtualMemory\"}");
+                        continue;
+                    }
+
+                    MEMORY_WORKING_SET_EX_INFORMATION wsInfo = { 0 };
+                    wsInfo.VirtualAddress = (PVOID)addr;
+                    SIZE_T retLen = 0;
+
+                    NTSTATUS status = NtQueryVirtualMemory(
+                        hProc,
+                        (PVOID)addr,
+                        4,  // MemoryWorkingSetExInformation
+                        &wsInfo,
+                        sizeof(wsInfo),
+                        &retLen
+                    );
+
+                    if (status != 0) {
+                        std::stringstream ss;
+                        ss << "{\"error\":\"NtQueryVirtualMemory failed\",\"status\":\"0x"
+                           << std::hex << (ULONG)status << "\",\"address\":\"0x" << addr << "\"}";
+                        sendHttpResponse(clientSocket, 500, "application/json", ss.str());
+                        continue;
+                    }
+
+                    MEMORY_WORKING_SET_EX_BLOCK attr = wsInfo.VirtualAttributes;
+
+                    std::stringstream ss;
+                    ss << "{"
+                       << "\"address\":\"0x" << std::hex << addr << "\","
+                       << "\"flags\":\"0x" << std::hex << attr.Flags << "\","
+                       << "\"valid\":" << (attr.Valid ? "true" : "false") << ",";
+
+                    if (attr.Valid) {
+                        // Valid page - return non-reserved fields
+                        ss << "\"shareCount\":" << std::dec << attr.ShareCount << ","
+                           << "\"win32Protection\":\"0x" << std::hex << attr.Win32Protection << "\","
+                           << "\"shared\":" << (attr.Shared ? "true" : "false") << ","
+                           << "\"node\":" << std::dec << attr.Node << ","
+                           << "\"locked\":" << (attr.Locked ? "true" : "false") << ","
+                           << "\"largePage\":" << (attr.LargePage ? "true" : "false") << ","
+                           << "\"priority\":" << std::dec << attr.Priority << ","
+                           << "\"sharedOriginal\":" << (attr.SharedOriginal ? "true" : "false") << ","
+                           << "\"bad\":" << (attr.Bad ? "true" : "false");
+#ifdef _WIN64
+                        ss << ",\"win32GraphicsProtection\":\"0x" << std::hex << attr.Win32GraphicsProtection << "\"";
+#endif
+                    }
+
+                    ss << "}";
+                    sendHttpResponse(clientSocket, 200, "application/json", ss.str());
+                }
+                else if (path == "/Memory/Info") {
+                    // Unified memory info query - combines VirtualQuery and WorkingSet
+                    std::string addrStr = queryParams["addr"];
+                    if (addrStr.empty()) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Missing required 'addr' parameter\"}");
+                        continue;
+                    }
+
+                    duint addr = 0;
+                    try {
+                        addr = std::stoull(addrStr, nullptr, 16);
+                    } catch (const std::exception& e) {
+                        sendHttpResponse(clientSocket, 400, "application/json",
+                            "{\"error\":\"Invalid address format\"}");
+                        continue;
+                    }
+
+                    // Get process handle
+                    HANDLE hProc = DbgGetProcessHandle();
+                    if (hProc == NULL || hProc == INVALID_HANDLE_VALUE) {
+                        sendHttpResponse(clientSocket, 500, "application/json",
+                            "{\"error\":\"Failed to get process handle\"}");
+                        continue;
+                    }
+
+                    // 1. VirtualQuery for basic memory info
+                    MEMORY_BASIC_INFORMATION mbi;
+                    memset(&mbi, 0, sizeof(mbi));
+                    SIZE_T queryResult = VirtualQueryEx(hProc, (LPCVOID)addr, &mbi, sizeof(mbi));
+
+                    if (queryResult == 0) {
+                        std::stringstream ss;
+                        ss << "{\"error\":\"VirtualQueryEx failed\",\"address\":\"0x" << std::hex << addr << "\"}";
+                        sendHttpResponse(clientSocket, 500, "application/json", ss.str());
+                        continue;
+                    }
+
+                    // Decode state
+                    const char* stateStr = "UNKNOWN";
+                    if (mbi.State == MEM_COMMIT) stateStr = "MEM_COMMIT";
+                    else if (mbi.State == MEM_RESERVE) stateStr = "MEM_RESERVE";
+                    else if (mbi.State == MEM_FREE) stateStr = "MEM_FREE";
+
+                    // Decode type
+                    const char* typeStr = "UNKNOWN";
+                    if (mbi.Type == MEM_IMAGE) typeStr = "IMG";
+                    else if (mbi.Type == MEM_MAPPED) typeStr = "MAP";
+                    else if (mbi.Type == MEM_PRIVATE) typeStr = "PRV";
+
+                    // Decode current protection
+                    const char* protectStr = "---";
+                    DWORD prot = mbi.Protect & 0xFF;
+                    if (prot == PAGE_EXECUTE_READWRITE) protectStr = "ERW";
+                    else if (prot == PAGE_EXECUTE_READ) protectStr = "ER-";
+                    else if (prot == PAGE_EXECUTE_WRITECOPY) protectStr = "ERW";
+                    else if (prot == PAGE_READWRITE) protectStr = "-RW";
+                    else if (prot == PAGE_READONLY) protectStr = "-R-";
+                    else if (prot == PAGE_WRITECOPY) protectStr = "-RW";
+                    else if (prot == PAGE_EXECUTE) protectStr = "E--";
+                    else if (prot == PAGE_NOACCESS) protectStr = "---";
+
+                    // Decode allocation protection
+                    const char* allocProtectStr = "---";
+                    DWORD allocProt = mbi.AllocationProtect & 0xFF;
+                    if (allocProt == PAGE_EXECUTE_READWRITE) allocProtectStr = "ERW";
+                    else if (allocProt == PAGE_EXECUTE_READ) allocProtectStr = "ER-";
+                    else if (allocProt == PAGE_EXECUTE_WRITECOPY) allocProtectStr = "ERW";
+                    else if (allocProt == PAGE_READWRITE) allocProtectStr = "-RW";
+                    else if (allocProt == PAGE_READONLY) allocProtectStr = "-R-";
+                    else if (allocProt == PAGE_WRITECOPY) allocProtectStr = "-RW";
+                    else if (allocProt == PAGE_EXECUTE) allocProtectStr = "E--";
+                    else if (allocProt == PAGE_NOACCESS) allocProtectStr = "---";
+
+                    // Get module info for this address
+                    char moduleInfo[MAX_MODULE_SIZE] = {0};
+                    DbgGetModuleAt(addr, moduleInfo);
+
+                    // 2. NtQueryVirtualMemory for WorkingSet info
+                    typedef LONG NTSTATUS;
+
+                    typedef union _MEMORY_WORKING_SET_EX_BLOCK_EX {
+                        ULONG_PTR Flags;
+                        struct {
+                            ULONG_PTR Valid : 1;
+                            ULONG_PTR ShareCount : 3;
+                            ULONG_PTR Win32Protection : 11;
+                            ULONG_PTR Shared : 1;
+                            ULONG_PTR Node : 6;
+                            ULONG_PTR Locked : 1;
+                            ULONG_PTR LargePage : 1;
+                            ULONG_PTR Priority : 3;
+                            ULONG_PTR Reserved : 3;
+                            ULONG_PTR SharedOriginal : 1;
+                            ULONG_PTR Bad : 1;
+#ifdef _WIN64
+                            ULONG_PTR Win32GraphicsProtection : 4;
+                            ULONG_PTR ReservedUlong : 28;
+#endif
+                        };
+                    } MEMORY_WORKING_SET_EX_BLOCK_EX;
+
+                    typedef struct _MEMORY_WORKING_SET_EX_INFORMATION_EX {
+                        PVOID VirtualAddress;
+                        MEMORY_WORKING_SET_EX_BLOCK_EX VirtualAttributes;
+                    } MEMORY_WORKING_SET_EX_INFORMATION_EX;
+
+                    typedef NTSTATUS(WINAPI* pNtQueryVirtualMemoryEx)(
+                        HANDLE ProcessHandle,
+                        PVOID BaseAddress,
+                        ULONG MemoryInformationClass,
+                        PVOID MemoryInformation,
+                        SIZE_T MemoryInformationLength,
+                        PSIZE_T ReturnLength
+                    );
+
+                    static pNtQueryVirtualMemoryEx NtQueryVirtualMemoryEx = nullptr;
+                    if (NtQueryVirtualMemoryEx == nullptr) {
+                        HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+                        if (hNtdll) {
+                            NtQueryVirtualMemoryEx = (pNtQueryVirtualMemoryEx)GetProcAddress(hNtdll, "NtQueryVirtualMemory");
+                        }
+                    }
+
+                    std::stringstream ss;
+                    ss << "{"
+                       << "\"address\":\"0x" << std::hex << addr << "\","
+                       << "\"base\":\"0x" << std::hex << (duint)mbi.BaseAddress << "\","
+                       << "\"allocationBase\":\"0x" << std::hex << (duint)mbi.AllocationBase << "\","
+                       << "\"size\":\"0x" << std::hex << mbi.RegionSize << "\","
+                       << "\"state\":\"" << stateStr << "\","
+                       << "\"type\":\"" << typeStr << "\","
+                       << "\"protect\":\"" << protectStr << "\","
+                       << "\"protectValue\":\"0x" << std::hex << prot << "\","
+                       << "\"allocationProtect\":\"" << allocProtectStr << "\","
+                       << "\"allocationProtectValue\":\"0x" << std::hex << allocProt << "\","
+                       << "\"module\":\"" << escapeJsonString(moduleInfo) << "\",";
+
+                    // WorkingSet info
+                    if (NtQueryVirtualMemoryEx != nullptr && mbi.State == MEM_COMMIT) {
+                        MEMORY_WORKING_SET_EX_INFORMATION_EX wsInfo = { 0 };
+                        wsInfo.VirtualAddress = (PVOID)addr;
+                        SIZE_T retLen = 0;
+
+                        NTSTATUS status = NtQueryVirtualMemoryEx(
+                            hProc,
+                            (PVOID)addr,
+                            4,  // MemoryWorkingSetExInformation
+                            &wsInfo,
+                            sizeof(wsInfo),
+                            &retLen
+                        );
+
+                        if (status == 0) {
+                            MEMORY_WORKING_SET_EX_BLOCK_EX attr = wsInfo.VirtualAttributes;
+                            ss << "\"workingSet\":{"
+                               << "\"flags\":\"0x" << std::hex << attr.Flags << "\","
+                               << "\"valid\":" << (attr.Valid ? "true" : "false") << ",";
+
+                            if (attr.Valid) {
+                                ss << "\"shareCount\":" << std::dec << attr.ShareCount << ","
+                                   << "\"win32Protection\":\"0x" << std::hex << attr.Win32Protection << "\","
+                                   << "\"shared\":" << (attr.Shared ? "true" : "false") << ","
+                                   << "\"node\":" << std::dec << attr.Node << ","
+                                   << "\"locked\":" << (attr.Locked ? "true" : "false") << ","
+                                   << "\"largePage\":" << (attr.LargePage ? "true" : "false") << ","
+                                   << "\"priority\":" << std::dec << attr.Priority << ","
+                                   << "\"sharedOriginal\":" << (attr.SharedOriginal ? "true" : "false") << ","
+                                   << "\"bad\":" << (attr.Bad ? "true" : "false");
+#ifdef _WIN64
+                                ss << ",\"win32GraphicsProtection\":\"0x" << std::hex << attr.Win32GraphicsProtection << "\"";
+#endif
+                            }
+                            ss << "},";
+                        }
+                    }
+
+                    // Remove trailing comma if workingSet was not added
+                    std::string result = ss.str();
+                    if (result.back() == ',') {
+                        result.pop_back();
+                    }
+                    result += "}";
+
+                    sendHttpResponse(clientSocket, 200, "application/json", result);
                 }
                 else if (path == "/Memory/RemoteAlloc") {
                     std::string addrStr = queryParams["addr"];
