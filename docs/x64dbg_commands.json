@@ -1,0 +1,678 @@
+{
+  "version": "1.0.0",
+  "description": "x64dbg Command Database - Structured command definitions for MCP integration",
+  "categories": {
+    "debug_control": {
+      "description": "Debugging control commands",
+      "commands": {
+        "init": {
+          "aliases": ["initdebug"],
+          "description": "Initialize debugging a file.",
+          "arguments": [
+            {"name": "arg1", "description": "Path to the executable file to debug.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "run": {
+          "description": "Resume execution of the debugged process.",
+          "arguments": [],
+          "result": "This command does not set any result variables."
+        },
+        "stop": {
+          "description": "Stop debugging.",
+          "arguments": [],
+          "result": "This command does not set any result variables."
+        },
+        "StepInto": {
+          "aliases": ["sti"],
+          "description": "Step into the next instruction.",
+          "arguments": [],
+          "result": "This command does not set any result variables."
+        },
+        "StepOver": {
+          "aliases": ["sto"],
+          "description": "Step over the next instruction.",
+          "arguments": [],
+          "result": "This command does not set any result variables."
+        },
+        "StepOut": {
+          "aliases": ["rtr"],
+          "description": "Step out of the current function (run until return).",
+          "arguments": [],
+          "result": "This command does not set any result variables."
+        },
+        "attach": {
+          "description": "Attach the debugger to a running process.",
+          "arguments": [
+            {"name": "arg1", "description": "Process ID (PID) to attach to.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "detach": {
+          "description": "Detach the debugger from the debugged process.",
+          "arguments": [],
+          "result": "This command does not set any result variables."
+        }
+      }
+    },
+    "breakpoint": {
+      "description": "Breakpoint control commands",
+      "commands": {
+        "SetBPX": {
+          "aliases": ["bp"],
+          "description": "Set a software breakpoint at the specified address.",
+          "arguments": [
+            {"name": "arg1", "description": "Address to set the breakpoint at.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "DeleteBPX": {
+          "aliases": ["bpc"],
+          "description": "Delete a software breakpoint.",
+          "arguments": [
+            {"name": "arg1", "description": "Address of the breakpoint to delete.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "SetHardwareBreakpoint": {
+          "aliases": ["bphws"],
+          "description": "Set a hardware breakpoint at the specified address.",
+          "arguments": [
+            {"name": "arg1", "description": "Address to set the breakpoint at.", "required": true},
+            {"name": "arg2", "description": "Size of the breakpoint (1, 2, 4, or 8 bytes). Default is 1.", "required": false},
+            {"name": "arg3", "description": "Type: 'r' for read, 'w' for write, 'x' for execute (default).", "required": false}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "DeleteHardwareBreakpoint": {
+          "aliases": ["bphwc"],
+          "description": "Delete a hardware breakpoint.",
+          "arguments": [
+            {"name": "arg1", "description": "Address of the hardware breakpoint to delete.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "SetMemoryBPX": {
+          "aliases": ["bpm"],
+          "description": "Set a memory breakpoint.",
+          "arguments": [
+            {"name": "arg1", "description": "Address of the memory region.", "required": true},
+            {"name": "arg2", "description": "Size of the memory region.", "required": false},
+            {"name": "arg3", "description": "Type: 'r' for read, 'w' for write, 'x' for execute.", "required": false}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "LibrarianSetBreakpoint": {
+          "aliases": ["bpdll"],
+          "description": "Set a DLL load breakpoint.",
+          "arguments": [
+            {"name": "arg1", "description": "Name of the DLL to break on (can use wildcards).", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "SetExceptionBPX": {
+          "description": "Set an exception breakpoint.",
+          "arguments": [
+            {"name": "arg1", "description": "Exception code or name.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        }
+      }
+    },
+    "memory": {
+      "description": "Memory operations",
+      "commands": {
+        "alloc": {
+          "description": "Allocate memory in the debuggee process.",
+          "arguments": [
+            {"name": "arg1", "description": "Size of memory to allocate (in bytes).", "required": true},
+            {"name": "arg2", "description": "Preferred base address. Default is 0 (any address).", "required": false}
+          ],
+          "result": "The $result variable is set to the allocated memory address."
+        },
+        "free": {
+          "description": "Free memory in the debuggee process.",
+          "arguments": [
+            {"name": "arg1", "description": "Address of memory to free.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "Fill": {
+          "aliases": ["memset"],
+          "description": "Fill memory with a byte pattern.",
+          "arguments": [
+            {"name": "arg1", "description": "Start address.", "required": true},
+            {"name": "arg2", "description": "Size of the region.", "required": true},
+            {"name": "arg3", "description": "Byte value to fill with.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "memcpy": {
+          "description": "Copy memory from one location to another.",
+          "arguments": [
+            {"name": "arg1", "description": "Destination address.", "required": true},
+            {"name": "arg2", "description": "Source address.", "required": true},
+            {"name": "arg3", "description": "Number of bytes to copy.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "getpagerights": {
+          "description": "Get memory page protection rights.",
+          "arguments": [
+            {"name": "arg1", "description": "Address of the page.", "required": true}
+          ],
+          "result": "The $result variable is set to the page rights string."
+        },
+        "setpagerights": {
+          "description": "Set memory page protection rights.",
+          "arguments": [
+            {"name": "arg1", "description": "Address of the page.", "required": true},
+            {"name": "arg2", "description": "Rights string (e.g., 'rwx', 'rx', 'rw').", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "savedata": {
+          "description": "Save memory region to a file.",
+          "arguments": [
+            {"name": "arg1", "description": "File path to save to.", "required": true},
+            {"name": "arg2", "description": "Start address.", "required": true},
+            {"name": "arg3", "description": "Size of the region.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "minidump": {
+          "description": "Create a minidump of the debugged process.",
+          "arguments": [
+            {"name": "arg1", "description": "File path to save the minidump.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        }
+      }
+    },
+    "searching": {
+      "description": "Pattern and reference searching",
+      "commands": {
+        "find": {
+          "description": "Find a pattern in a memory page.",
+          "arguments": [
+            {"name": "arg1", "description": "Start address.", "required": true},
+            {"name": "arg2", "description": "Byte pattern (supports wildcards like 'EB0?90??8D').", "required": true},
+            {"name": "arg3", "description": "Size to search in. Default is memory region size.", "required": false}
+          ],
+          "result": "The $result variable is set to the address of the first match, or 0 if not found."
+        },
+        "findall": {
+          "description": "Find all occurrences of a pattern in a memory page.",
+          "arguments": [
+            {"name": "arg1", "description": "Start address.", "required": true},
+            {"name": "arg2", "description": "Byte pattern (supports wildcards).", "required": true},
+            {"name": "arg3", "description": "Size to search in. Default is memory region size.", "required": false}
+          ],
+          "result": "$result is set to the number of occurrences. Results appear in References view."
+        },
+        "findallmem": {
+          "aliases": ["findmemall"],
+          "description": "Find all occurrences of a pattern in the entire memory map.",
+          "arguments": [
+            {"name": "arg1", "description": "Start address.", "required": true},
+            {"name": "arg2", "description": "Byte pattern (supports wildcards).", "required": true},
+            {"name": "arg3", "description": "Size to search in. Default is entire memory (-1).", "required": false},
+            {"name": "arg4", "description": "Filter: 'user', 'system', or 'module'.", "required": false}
+          ],
+          "result": "$result is set to the number of occurrences."
+        },
+        "findasm": {
+          "aliases": ["asmfind"],
+          "description": "Find assembled instructions.",
+          "arguments": [
+            {"name": "arg1", "description": "Instruction to search for (quoted string).", "required": true},
+            {"name": "arg2", "description": "Address to start searching. Default is CIP.", "required": false},
+            {"name": "arg3", "description": "Size to search in.", "required": false}
+          ],
+          "result": "$result is set to the number of references found."
+        },
+        "reffind": {
+          "aliases": ["findref", "ref"],
+          "description": "Find references to a value.",
+          "arguments": [
+            {"name": "arg1", "description": "Value to search for.", "required": true},
+            {"name": "arg2", "description": "Address to start searching. Default is CIP.", "required": false},
+            {"name": "arg3", "description": "Size to search in.", "required": false}
+          ],
+          "result": "$result is set to the number of references found."
+        },
+        "refstr": {
+          "aliases": ["strref"],
+          "description": "Find referenced text strings.",
+          "arguments": [
+            {"name": "arg1", "description": "Address to start searching. Default is CIP.", "required": false},
+            {"name": "arg2", "description": "Size to search in.", "required": false}
+          ],
+          "result": "$result is set to the number of string references found."
+        },
+        "modcallfind": {
+          "description": "Find all inter-modular calls.",
+          "arguments": [
+            {"name": "arg1", "description": "Address to start searching. Default is EIP/RIP.", "required": false},
+            {"name": "arg2", "description": "Size to search in.", "required": false}
+          ],
+          "result": "$result is set to the number of inter-modular calls found."
+        }
+      }
+    },
+    "analysis": {
+      "description": "Code analysis commands",
+      "commands": {
+        "analyse": {
+          "aliases": ["analyze", "anal"],
+          "description": "Perform function analysis on the current module.",
+          "arguments": [],
+          "result": "This command does not set any result variables."
+        },
+        "analrecur": {
+          "aliases": ["analr"],
+          "description": "Perform single function analysis.",
+          "arguments": [
+            {"name": "arg1", "description": "Base address of the function to analyze.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "analxrefs": {
+          "aliases": ["analx"],
+          "description": "Perform cross-reference analysis in the current module.",
+          "arguments": [],
+          "result": "This command does not set any result variables."
+        },
+        "symdownload": {
+          "aliases": ["downloadsym"],
+          "description": "Download symbols from a Symbol Store.",
+          "arguments": [
+            {"name": "arg1", "description": "Module name. If not specified, downloads for all modules.", "required": false},
+            {"name": "arg2", "description": "Symbol Store URL. If not specified, uses default.", "required": false}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "exhandlers": {
+          "description": "Print all exception handlers (SEH, VEH, VCH, UnhandledExceptionFilter).",
+          "arguments": [],
+          "result": "This command does not set any result variables."
+        }
+      }
+    },
+    "thread": {
+      "description": "Thread control commands",
+      "commands": {
+        "createthread": {
+          "description": "Create a new thread in the debugged process.",
+          "arguments": [
+            {"name": "arg1", "description": "Start address of the thread.", "required": true},
+            {"name": "arg2", "description": "Parameter to pass to the thread.", "required": false}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "switchthread": {
+          "description": "Switch to a different thread.",
+          "arguments": [
+            {"name": "arg1", "description": "Thread number to switch to.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "suspendthread": {
+          "description": "Suspend a thread.",
+          "arguments": [
+            {"name": "arg1", "description": "Thread number to suspend.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "resumethread": {
+          "description": "Resume a suspended thread.",
+          "arguments": [
+            {"name": "arg1", "description": "Thread number to resume.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "killthread": {
+          "description": "Kill a thread.",
+          "arguments": [
+            {"name": "arg1", "description": "Thread number to kill.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        }
+      }
+    },
+    "tracing": {
+      "description": "Execution tracing commands",
+      "commands": {
+        "TraceIntoConditional": {
+          "aliases": ["ticnd"],
+          "description": "Trace into until condition is met.",
+          "arguments": [
+            {"name": "arg1", "description": "Condition expression.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "TraceOverConditional": {
+          "aliases": ["tocnd"],
+          "description": "Trace over until condition is met.",
+          "arguments": [
+            {"name": "arg1", "description": "Condition expression.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "tibt": {
+          "description": "Trace into beyond TLS callback.",
+          "arguments": [],
+          "result": "This command does not set any result variables."
+        },
+        "tobt": {
+          "description": "Trace over beyond TLS callback.",
+          "arguments": [],
+          "result": "This command does not set any result variables."
+        }
+      }
+    },
+    "user_database": {
+      "description": "User database operations (comments, labels, bookmarks, functions)",
+      "commands": {
+        "commentset": {
+          "aliases": ["cmt", "cmtset"],
+          "description": "Set a comment at an address.",
+          "arguments": [
+            {"name": "arg1", "description": "Address to set the comment at.", "required": true},
+            {"name": "arg2", "description": "Comment text.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "commentdel": {
+          "aliases": ["cmtc", "cmtdel"],
+          "description": "Delete a comment.",
+          "arguments": [
+            {"name": "arg1", "description": "Address of the comment to delete.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "labelset": {
+          "aliases": ["lbl", "lblset"],
+          "description": "Set a label at an address.",
+          "arguments": [
+            {"name": "arg1", "description": "Address to set the label at.", "required": true},
+            {"name": "arg2", "description": "Label text.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "labeldel": {
+          "aliases": ["lblc", "lbldel"],
+          "description": "Delete a label.",
+          "arguments": [
+            {"name": "arg1", "description": "Address of the label to delete.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "bookmarkset": {
+          "aliases": ["bookmark"],
+          "description": "Set a bookmark at an address.",
+          "arguments": [
+            {"name": "arg1", "description": "Address to set the bookmark at.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "bookmarkdel": {
+          "aliases": ["bookmarkc"],
+          "description": "Delete a bookmark.",
+          "arguments": [
+            {"name": "arg1", "description": "Address of the bookmark to delete.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "functionadd": {
+          "aliases": ["func"],
+          "description": "Add a function.",
+          "arguments": [
+            {"name": "arg1", "description": "Function range start.", "required": true},
+            {"name": "arg2", "description": "Function range end.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "functiondel": {
+          "aliases": ["funcc"],
+          "description": "Delete a function.",
+          "arguments": [
+            {"name": "arg1", "description": "Address inside the function range to delete.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        }
+      }
+    },
+    "variables": {
+      "description": "Variable management commands",
+      "commands": {
+        "var": {
+          "aliases": ["varnew"],
+          "description": "Create a new variable.",
+          "arguments": [
+            {"name": "arg1", "description": "Variable name (with $ prefix).", "required": true},
+            {"name": "arg2", "description": "Initial value.", "required": false}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "vardel": {
+          "description": "Delete a variable.",
+          "arguments": [
+            {"name": "arg1", "description": "Variable name to delete.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "varlist": {
+          "description": "List all variables.",
+          "arguments": [],
+          "result": "This command does not set any result variables."
+        }
+      }
+    },
+    "general_purpose": {
+      "description": "General purpose operations (mov, add, sub, etc.)",
+      "commands": {
+        "mov": {
+          "aliases": ["set"],
+          "description": "Set a variable or register value.",
+          "arguments": [
+            {"name": "arg1", "description": "Destination (variable name or register).", "required": true},
+            {"name": "arg2", "description": "Value to store.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "add": {
+          "description": "Add two values.",
+          "arguments": [
+            {"name": "arg1", "description": "Destination.", "required": true},
+            {"name": "arg2", "description": "Source value to add.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "sub": {
+          "description": "Subtract two values.",
+          "arguments": [
+            {"name": "arg1", "description": "Destination.", "required": true},
+            {"name": "arg2", "description": "Source value to subtract.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "xor": {
+          "description": "Binary XOR two values.",
+          "arguments": [
+            {"name": "arg1", "description": "Destination.", "required": true},
+            {"name": "arg2", "description": "Source value to XOR with.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "cmp": {
+          "description": "Compare two expressions. Sets $_EZ_FLAG and $_BS_FLAG.",
+          "arguments": [
+            {"name": "arg1", "description": "First expression.", "required": true},
+            {"name": "arg2", "description": "Second expression.", "required": true}
+          ],
+          "result": "Sets $_EZ_FLAG (1 if equal) and $_BS_FLAG (1 if arg1 > arg2)."
+        },
+        "push": {
+          "description": "Push a value on the stack.",
+          "arguments": [
+            {"name": "arg1", "description": "Value to push.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "pop": {
+          "description": "Pop a value from the stack.",
+          "arguments": [
+            {"name": "arg1", "description": "Destination (optional).", "required": false}
+          ],
+          "result": "This command does not set any result variables."
+        }
+      }
+    },
+    "misc": {
+      "description": "Miscellaneous commands",
+      "commands": {
+        "chd": {
+          "description": "Change current directory.",
+          "arguments": [
+            {"name": "arg1", "description": "Path of a directory to change to.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "loadlib": {
+          "description": "Load a DLL into debugged program memory.",
+          "arguments": [
+            {"name": "arg1", "description": "Name/path of the module to load.", "required": true}
+          ],
+          "result": "The $result variable will be set to the address of the loaded library."
+        },
+        "asm": {
+          "description": "Assemble an instruction.",
+          "arguments": [
+            {"name": "arg1", "description": "Address to place the assembled instruction.", "required": true},
+            {"name": "arg2", "description": "Instruction text.", "required": true},
+            {"name": "arg3", "description": "Fill remainder with NOPs if specified.", "required": false}
+          ],
+          "result": "$result will be set to the assembled instruction size. 0 on failure."
+        },
+        "gpa": {
+          "description": "Get the address of an export inside a DLL.",
+          "arguments": [
+            {"name": "arg1", "description": "Export name.", "required": true},
+            {"name": "arg2", "description": "DLL name (optional).", "required": false}
+          ],
+          "result": "The $result variable is set to the export address. 0 if not found."
+        },
+        "HideDebugger": {
+          "aliases": ["dbh", "hide"],
+          "description": "Hide the debugger from simple detection methods. Modifies PEB.",
+          "arguments": [],
+          "result": "This command does not set any result variables."
+        }
+      }
+    },
+    "gui": {
+      "description": "GUI control commands",
+      "commands": {
+        "disasm": {
+          "aliases": ["dis", "d"],
+          "description": "Disassemble at a certain position.",
+          "arguments": [
+            {"name": "arg1", "description": "Address to disassemble at. Default is CIP.", "required": false}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "dump": {
+          "description": "Dump at a certain position.",
+          "arguments": [
+            {"name": "arg1", "description": "Address to dump at.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "graph": {
+          "description": "Graph the control flow of a function.",
+          "arguments": [
+            {"name": "arg1", "description": "Address of the function. Default is EIP/RIP.", "required": false},
+            {"name": "arg2", "description": "Options: 'force' to reanalyze, 'silent' to suppress messages.", "required": false}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "refinit": {
+          "description": "Initialize reference view.",
+          "arguments": [
+            {"name": "arg1", "description": "Title of the new reference view.", "required": false}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "refadd": {
+          "description": "Add an entry to the reference view.",
+          "arguments": [
+            {"name": "arg1", "description": "Address to put in the reference view.", "required": true},
+            {"name": "arg2", "description": "Text to put after the address.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        }
+      }
+    },
+    "script": {
+      "description": "Script commands",
+      "commands": {
+        "log": {
+          "description": "Output information to the log.",
+          "arguments": [
+            {"name": "arg1", "description": "Format string (supports String Formatting).", "required": false}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "msg": {
+          "description": "Display a message box.",
+          "arguments": [
+            {"name": "arg1", "description": "Message box text.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "scriptload": {
+          "description": "Load a script file.",
+          "arguments": [
+            {"name": "arg1", "description": "Script file to load.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "scriptexec": {
+          "description": "Load and execute a script file in a single operation.",
+          "arguments": [
+            {"name": "arg1", "description": "Script file path to load and execute.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        }
+      }
+    },
+    "os_control": {
+      "description": "Operating system control commands",
+      "commands": {
+        "EnablePrivilege": {
+          "description": "Enable a privilege.",
+          "arguments": [
+            {"name": "arg1", "description": "Name of the privilege (e.g., 'SeDebugPrivilege').", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "DisablePrivilege": {
+          "description": "Disable a privilege.",
+          "arguments": [
+            {"name": "arg1", "description": "Name of the privilege (e.g., 'SeDebugPrivilege').", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        },
+        "handleclose": {
+          "aliases": ["closehandle"],
+          "description": "Close a remote handle.",
+          "arguments": [
+            {"name": "arg1", "description": "Handle value in the context of the debuggee.", "required": true}
+          ],
+          "result": "This command does not set any result variables."
+        }
+      }
+    }
+  }
+}
