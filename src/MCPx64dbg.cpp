@@ -345,36 +345,50 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         continue;
                     }
                     
-                    // Snapshot the references tab row count before the command
-                    int refRowCountBefore = GuiReferenceGetRowCount();
+                    // Detect if this is a reference-view-producing command
+                    std::string cmdLower = cmd;
+                    std::transform(cmdLower.begin(), cmdLower.end(), cmdLower.begin(), ::tolower);
+                    bool isRefCommand = (
+                        cmdLower.find("findallmem") == 0 ||
+                        cmdLower.find("findall") == 0 ||
+                        cmdLower.find("refstr") == 0 ||
+                        cmdLower.find("reffind") == 0 ||
+                        cmdLower.find("reffindrange") == 0 ||
+                        cmdLower.find("findasm") == 0 ||
+                        cmdLower.find("modcallfind") == 0 ||
+                        cmdLower.find("guidfind") == 0 ||
+                        cmdLower.find("strref") == 0
+                    );
 
                     // Execute the command synchronously
                     bool success = DbgCmdExecDirect(cmd.c_str());
 
-                    // Check if the references tab changed (command populated it fresh)
-                    int refRowCountAfter = GuiReferenceGetRowCount();
-                    bool refChanged = (refRowCountAfter != refRowCountBefore);
+                    // For ref-producing commands, the GUI reference view is populated
+                    // asynchronously via GUI thread messages. Poll until the row count
+                    // stabilizes so we don't return before results are ready.
+                    int refRowCountAfter = 0;
+                    bool refChanged = false;
 
-                    // If row counts match, do a quick content check on the first row
-                    // to detect cases where a new search returned the same number of rows
-                    if (!refChanged && refRowCountAfter > 0) {
-                        // We can't perfectly detect this without storing old content,
-                        // but a count change covers the vast majority of cases.
-                        // As a heuristic: if the command starts with a known ref-producing
-                        // keyword, assume it changed.
-                        std::string cmdLower = cmd;
-                        std::transform(cmdLower.begin(), cmdLower.end(), cmdLower.begin(), ::tolower);
-                        if (cmdLower.find("refstr") == 0 ||
-                            cmdLower.find("reffind") == 0 ||
-                            cmdLower.find("reffindrange") == 0 ||
-                            cmdLower.find("findall") == 0 ||
-                            cmdLower.find("findallmem") == 0 ||
-                            cmdLower.find("findasm") == 0 ||
-                            cmdLower.find("modcallfind") == 0 ||
-                            cmdLower.find("guidfind") == 0 ||
-                            cmdLower.find("strref") == 0) {
-                            refChanged = true;
+                    if (success && isRefCommand) {
+                        // Give the GUI thread time to process the initial batch
+                        Sleep(100);
+                        int prevCount = GuiReferenceGetRowCount();
+                        int stableChecks = 0;
+                        for (int poll = 0; poll < 50; poll++) {  // up to ~5 seconds
+                            Sleep(100);
+                            int curCount = GuiReferenceGetRowCount();
+                            if (curCount == prevCount) {
+                                stableChecks++;
+                                if (stableChecks >= 3) break;  // stable for 300ms
+                            } else {
+                                stableChecks = 0;
+                                prevCount = curCount;
+                            }
                         }
+                        refRowCountAfter = GuiReferenceGetRowCount();
+                        refChanged = (refRowCountAfter > 0);
+                    } else {
+                        refRowCountAfter = GuiReferenceGetRowCount();
                     }
 
                     // Pagination parameters for reference view results
