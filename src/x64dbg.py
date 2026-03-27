@@ -174,8 +174,10 @@ def _block_to_dict(block: Any) -> Dict[str, Any]:
 def ExecCommand(cmd: str, offset: int = 0, limit: int = 100) -> dict:
     """
     Execute a command in x64dbg and return its output
+
+    Ensure that if if the command has arguments, you comma separate the values.
     
-    Parameters:
+    Parameters for commands that use the Reference View:
         cmd: Command to execute
         offset: Pagination offset for reference view results (default: 0)
         limit: Maximum number of reference view rows to return (default: 100, max: 5000)
