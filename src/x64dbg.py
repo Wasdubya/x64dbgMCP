@@ -175,7 +175,7 @@ def ExecCommand(cmd: str, offset: int = 0, limit: int = 100) -> dict:
     """
     Execute a command in x64dbg and return its output
 
-    Ensure that if if the command has arguments, you comma separate the values.
+    Ensure that if if the command has arguments, you comma separate the values, but not the command itself I.E. findallmem findallmem 0x140001000,CC,20480 
     
     Parameters for commands that use the Reference View:
         cmd: Command to execute
