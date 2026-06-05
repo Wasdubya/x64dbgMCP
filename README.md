@@ -82,6 +82,7 @@
 **More Usage**
   - If you do not provide the model you are working with context of where your exe is, it wont have the capabiltiy to restart the binary if it crashes or hangs. So, provide it with the full path of the binary so it can call the CMDEXEC function like "init C:\Absolute\Path\to\EXE".
   - GetModuleBase is the best place to start for models so it will query for the right addresses, x64dbg will not respond to addresses out of range.
+  - If large token count is a concern, try [Headroom](https://github.com/chopratejas/headroom). It's a proxy to put in-between the plugin and your LLM MCP python agent. 
 <br>
 <br>
 <div align="center">  <b>Enjoy Automated Debugging!</b>  </div>
