@@ -5,7 +5,11 @@ import json
 from typing import Any, Callable, Dict, List, Optional
 import requests
 
-from mcp.server.fastmcp import FastMCP
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError:
+    # MCP SDK >= 2.0 renamed FastMCP to MCPServer
+    from mcp.server.mcpserver import MCPServer as FastMCP
 
 DEFAULT_X64DBG_SERVER = "http://127.0.0.1:8888/"
 
