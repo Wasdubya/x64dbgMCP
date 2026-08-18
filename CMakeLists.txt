@@ -22,6 +22,7 @@ if(BUILD_BOTH_ARCHES AND MSVC)
             -DBUILD_BOTH_ARCHES=OFF
             -DX64DBG_DOWNLOAD_SDK=${X64DBG_DOWNLOAD_SDK}
         INSTALL_COMMAND ""
+        BUILD_ALWAYS TRUE
     )
 
     ExternalProject_Add(plugin64
@@ -32,6 +33,7 @@ if(BUILD_BOTH_ARCHES AND MSVC)
             -DBUILD_BOTH_ARCHES=OFF
             -DX64DBG_DOWNLOAD_SDK=${X64DBG_DOWNLOAD_SDK}
         INSTALL_COMMAND ""
+        BUILD_ALWAYS TRUE
     )
 
     add_custom_target(all_plugins DEPENDS plugin32 plugin64)
@@ -64,6 +66,7 @@ if(NOT EXISTS "${X64DBG_DEPS_DIR}/bridgemain.h")
         if(NOT _dl EQUAL 0)
             message(FATAL_ERROR "Plugin SDK download failed (status: ${_dl})")
         endif()
+        file(MAKE_DIRECTORY "${X64DBG_DEPS_DIR}")
         execute_process(COMMAND ${CMAKE_COMMAND} -E tar xf "${_x64dbg_psdk_zip}"
             WORKING_DIRECTORY "${X64DBG_DEPS_DIR}" RESULT_VARIABLE _ex)
         if(NOT _ex EQUAL 0)
@@ -96,6 +99,7 @@ if(_need_sdk_fetch)
         if(NOT _dl2 EQUAL 0)
             message(FATAL_ERROR "Plugin SDK download failed (status: ${_dl2})")
         endif()
+        file(MAKE_DIRECTORY "${X64DBG_DEPS_DIR}")
         execute_process(COMMAND ${CMAKE_COMMAND} -E tar xf "${_x64dbg_psdk_zip}"
             WORKING_DIRECTORY "${X64DBG_DEPS_DIR}" RESULT_VARIABLE _ex2)
         if(NOT _ex2 EQUAL 0)
