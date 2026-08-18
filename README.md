@@ -15,7 +15,7 @@
 <div align="center"> An MCP server that can bridge various LLMS (Claude and Cursor tested) with the x64dbg debugger, providing direct access to debugging applications through prompts. </div>
 <h2 align="center"> <b>Features (Build from Source for Latest)</b> </h2>
 
-- **40+ x64dbg SDK Tools** - Provides access to almost every single debugging feature given by the SDK for smart debugging. 
+- **40+ x64dbg SDK Tools** - Provides access to almost every single debugging feature given by the SDK for smart debugging.
 - **Cross-Architecture Support** - Works with both x64dbg and x32dbg.
 - **API Compatibility** - Runable from cmd using the args given in the python file.
 <br><br>
@@ -43,7 +43,7 @@
   }
 }
 ```
-      
+
 3. **Start Debugging**
    - Launch x64dbg
    - Start Claude Desktop
@@ -51,18 +51,24 @@
 <br>
 
 <h2> Build from Source for Latest Features! </h2>
-** CMake and MSVC should be installed and on PATH  **
+** CMake and MSVC should be installed and on PATH **
 
-- git clone https://github.com/wasdubya/x64dbgmcp
-- cd x64dbgmcp
-- cmake -S . -B build     (will resolve the pluginsdk automatically, so no need to worry about dependencies.)
-- cmake --build build --target all_plugins --config Release     (will build both 32 and 64 bit versions of the plugin)
+```powershell
+git clone https://github.com/wasdubya/x64dbgmcp
+cd x64dbgmcp
+cmake -S . -B build -DX64DBG_DOWNLOAD_SDK=ON  # will resolve the pluginsdk automatically, so no need to worry about dependencies.
+cmake --build build --target all_plugins --config Release  # will build both 32 and 64 bit versions of the plugin
+```
 
 **TIP**
 
 1. Use the --target all_plugins argument to specify both x32 and x64, otherwise use -A flag to distinguish between either x64 or Win32 build. For example 32 bit build would be:
-- cmake -S . -B build32  -A Win32 -DBUILD_BOTH_ARCHES=OFF
-- cmake --build build32 --config Release
+
+```powershell
+cmake -S . -B build32 -A Win32 -DBUILD_BOTH_ARCHES=OFF
+cmake --build build32 --config Release
+```
+
 <br>
 <h2> Usage Examples </h2>
 
@@ -82,7 +88,7 @@
 **More Usage**
   - If you do not provide the model you are working with context of where your exe is, it wont have the capabiltiy to restart the binary if it crashes or hangs. So, provide it with the full path of the binary so it can call the CMDEXEC function like "init C:\Absolute\Path\to\EXE".
   - GetModuleBase is the best place to start for models so it will query for the right addresses, x64dbg will not respond to addresses out of range.
-  - If large token count is a concern, try [Headroom](https://github.com/chopratejas/headroom). It's a proxy to put in-between the plugin and your LLM MCP python agent. 
+  - If large token count is a concern, try [Headroom](https://github.com/chopratejas/headroom). It's a proxy to put in-between the plugin and your LLM MCP python agent.
 <br>
 <br>
 <div align="center">  <b>Enjoy Automated Debugging!</b>  </div>
