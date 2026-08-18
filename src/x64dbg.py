@@ -61,9 +61,9 @@ def safe_post(endpoint: str, data: dict | str):
             response = requests.post(url, data=data, timeout=5)
         else:
             response = requests.post(url, data=data.encode("utf-8"), timeout=5)
-        
+
         response.encoding = 'utf-8'
-        
+
         if response.ok:
             # Try to parse as JSON first
             try:
@@ -175,13 +175,13 @@ def ExecCommand(cmd: str, offset: int = 0, limit: int = 100) -> dict:
     """
     Execute a command in x64dbg and return its output
 
-    Ensure that if if the command has arguments, you comma separate the values, but not the command itself I.E. findallmem findallmem 0x140001000,CC,20480 
-    
+    Ensure that if if the command has arguments, you comma separate the values, but not the command itself I.E. findallmem findallmem 0x140001000,CC,20480
+
     Parameters for commands that use the Reference View:
         cmd: Command to execute
         offset: Pagination offset for reference view results (default: 0)
         limit: Maximum number of reference view rows to return (default: 100, max: 5000)
-    
+
     Returns:
         Dictionary with:
         - success: Whether the command executed successfully
@@ -237,10 +237,10 @@ def IsDebugging() -> bool:
 def RegisterGet(register: str) -> str:
     """
     Get register value using Script API
-    
+
     Parameters:
         register: Register name (e.g. "eax", "rax", "rip")
-    
+
     Returns:
         Register value in hex format
     """
@@ -250,11 +250,11 @@ def RegisterGet(register: str) -> str:
 def RegisterSet(register: str, value: str) -> str:
     """
     Set register value using Script API
-    
+
     Parameters:
         register: Register name (e.g. "eax", "rax", "rip")
         value: Value to set (in hex format, e.g. "0x1000")
-    
+
     Returns:
         Status message
     """
@@ -265,25 +265,25 @@ def RegisterSet(register: str, value: str) -> str:
 def MemoryRead(addr: str, size: str) -> str:
     """
     Read memory using enhanced Script API
-    
+
     Parameters:
         addr: Memory address (in hex format, e.g. "0x1000")
-        size: Number of bytes to read
-    
+        size: Number of bytes to read (note: hex sizes need to be prefixed with 0x)
+
     Returns:
         Hexadecimal string representing the memory contents
     """
-    return safe_get("Memory/Read", {"addr": addr, "size": size})
+    return safe_get("Memory/Read", {"addr": addr, "size": str(int(size, 0))})
 
 @mcp.tool()
 def MemoryWrite(addr: str, data: str) -> str:
     """
     Write memory using enhanced Script API
-    
+
     Parameters:
         addr: Memory address (in hex format, e.g. "0x1000")
         data: Hexadecimal string representing the data to write
-    
+
     Returns:
         Status message
     """
@@ -293,26 +293,29 @@ def MemoryWrite(addr: str, data: str) -> str:
 def MemoryIsValidPtr(addr: str) -> bool:
     """
     Check if memory address is valid
-    
+
     Parameters:
         addr: Memory address (in hex format, e.g. "0x1000")
-    
+
     Returns:
         True if valid, False otherwise
     """
     result = safe_get("Memory/IsValidPtr", {"addr": addr})
     if isinstance(result, str):
         return result.lower() == "true"
-    return False
+    elif isinstance(result, bool):
+        return result
+    else:
+        return False
 
 @mcp.tool()
 def MemoryGetProtect(addr: str) -> str:
     """
     Get memory protection flags
-    
+
     Parameters:
         addr: Memory address (in hex format, e.g. "0x1000")
-    
+
     Returns:
         Protection flags in hex format
     """
@@ -323,7 +326,7 @@ def MemoryGetProtect(addr: str) -> str:
 def DebugRun() -> str:
     """
     Resume execution of the debugged process using Script API
-    
+
     Returns:
         Status message
     """
@@ -333,7 +336,7 @@ def DebugRun() -> str:
 def DebugPause() -> str:
     """
     Pause execution of the debugged process using Script API
-    
+
     Returns:
         Status message
     """
@@ -343,7 +346,7 @@ def DebugPause() -> str:
 def DebugStop() -> str:
     """
     Stop debugging using Script API
-    
+
     Returns:
         Status message
     """
@@ -353,7 +356,7 @@ def DebugStop() -> str:
 def DebugStepIn() -> str:
     """
     Step into the next instruction using Script API
-    
+
     Returns:
         Status message
     """
@@ -363,7 +366,7 @@ def DebugStepIn() -> str:
 def DebugStepOver() -> str:
     """
     Step over the next instruction using Script API
-    
+
     Returns:
         Status message
     """
@@ -373,7 +376,7 @@ def DebugStepOver() -> str:
 def DebugStepOut() -> str:
     """
     Step out of the current function using Script API
-    
+
     Returns:
         Status message
     """
@@ -383,10 +386,10 @@ def DebugStepOut() -> str:
 def DebugSetBreakpoint(addr: str) -> str:
     """
     Set breakpoint at address using Script API
-    
+
     Parameters:
         addr: Memory address (in hex format, e.g. "0x1000")
-    
+
     Returns:
         Status message
     """
@@ -396,10 +399,10 @@ def DebugSetBreakpoint(addr: str) -> str:
 def DebugDeleteBreakpoint(addr: str) -> str:
     """
     Delete breakpoint at address using Script API
-    
+
     Parameters:
         addr: Memory address (in hex format, e.g. "0x1000")
-    
+
     Returns:
         Status message
     """
@@ -410,11 +413,11 @@ def DebugDeleteBreakpoint(addr: str) -> str:
 def AssemblerAssemble(addr: str, instruction: str) -> dict:
     """
     Assemble instruction at address using Script API
-    
+
     Parameters:
         addr: Memory address (in hex format, e.g. "0x1000")
         instruction: Assembly instruction (e.g. "mov eax, 1")
-    
+
     Returns:
         Dictionary with assembly result
     """
@@ -432,11 +435,11 @@ def AssemblerAssemble(addr: str, instruction: str) -> dict:
 def AssemblerAssembleMem(addr: str, instruction: str) -> str:
     """
     Assemble instruction directly into memory using Script API
-    
+
     Parameters:
         addr: Memory address (in hex format, e.g. "0x1000")
         instruction: Assembly instruction (e.g. "mov eax, 1")
-    
+
     Returns:
         Status message
     """
@@ -447,7 +450,7 @@ def AssemblerAssembleMem(addr: str, instruction: str) -> str:
 def StackPop() -> str:
     """
     Pop value from stack using Script API
-    
+
     Returns:
         Popped value in hex format
     """
@@ -457,10 +460,10 @@ def StackPop() -> str:
 def StackPush(value: str) -> str:
     """
     Push value to stack using Script API
-    
+
     Parameters:
         value: Value to push (in hex format, e.g. "0x1000")
-    
+
     Returns:
         Previous top value in hex format
     """
@@ -470,10 +473,10 @@ def StackPush(value: str) -> str:
 def StackPeek(offset: str = "0") -> str:
     """
     Peek at stack value using Script API
-    
+
     Parameters:
         offset: Stack offset (default: "0")
-    
+
     Returns:
         Stack value in hex format
     """
@@ -484,10 +487,10 @@ def StackPeek(offset: str = "0") -> str:
 def FlagGet(flag: str) -> bool:
     """
     Get CPU flag value using TitanEngine
-    
+
     Parameters:
         flag: Flag name (ZF, OF, CF, PF, SF, TF, AF, DF, IF)
-    
+
     Returns:
         Flag value (True/False)
     """
@@ -502,11 +505,11 @@ def FlagGet(flag: str) -> bool:
 def FlagSet(flag: str, value: bool) -> str:
     """
     Set CPU flag value using Script API
-    
+
     Parameters:
         flag: Flag name (ZF, OF, CF, PF, SF, TF, AF, DF, IF)
         value: Flag value (True/False)
-    
+
     Returns:
         Status message
     """
@@ -517,16 +520,16 @@ def FlagSet(flag: str, value: bool) -> str:
 def PatternFindMem(start: str, size: str, pattern: str) -> str:
     """
     Find pattern in memory using Script API
-    
+
     Parameters:
         start: Start address (in hex format, e.g. "0x1000")
-        size: Size to search IN DECIMAL
+        size: Size to search in decimal or 0x prefixed hex
         pattern: Pattern to find (e.g. "48 8B 05 ?? ?? ?? ??")
-    
+
     Returns:
         Found address in hex format or error message
     """
-    return safe_get("Pattern/FindMem", {"start": start, "size": size, "pattern": pattern})
+    return safe_get("Pattern/FindMem", {"start": start, "size": str(int(size, 0)), "pattern": pattern})
 
 
 @mcp.tool()
@@ -547,11 +550,11 @@ def MiscParseExpression(expression: str) -> str:
 def MiscRemoteGetProcAddress(module: str, api: str) -> str:
     """
     Get remote procedure address using Script API
-    
+
     Parameters:
         module: Module name (e.g. "kernel32.dll")
         api: API name (e.g. "GetProcAddress")
-    
+
     Returns:
         Function address in hex format
     """
@@ -562,11 +565,11 @@ def MiscRemoteGetProcAddress(module: str, api: str) -> str:
 def DisasmGetInstructionRange(addr: str, count: int = 1) -> list:
     """
     Get disassembly of multiple instructions starting at the specified address
-    
+
     Parameters:
         addr: Memory address (in hex format, e.g. "0x1000")
         count: Number of instructions to disassemble (default: 1, max: 100)
-    
+
     Returns:
         List of dictionaries containing instruction details
     """
@@ -585,7 +588,7 @@ def DisasmGetInstructionRange(addr: str, count: int = 1) -> list:
 def StepInWithDisasm() -> dict:
     """
     Step into the next instruction and return both step result and current instruction disassembly
-    
+
     Returns:
         Dictionary containing step result and current instruction info
     """
@@ -661,12 +664,12 @@ def QuerySymbols(module: str, offset: int = 0, limit: int = 5000) -> dict:
     """
     Enumerate symbols for a specific module. Use GetModuleList first to discover module names.
     Returns imports, exports, and user-defined function symbols for the given module.
-    
+
     Args:
         module: Module name to query symbols for (e.g. "kernel32.dll", "ntdll.dll"). Required.
         offset: Pagination offset - number of symbols to skip (default: 0)
         limit: Maximum number of symbols to return per page (default: 5000, max: 50000)
-    
+
     Returns:
         Dictionary with:
         - total: Total number of symbols in the module
@@ -680,23 +683,23 @@ def QuerySymbols(module: str, offset: int = 0, limit: int = 5000) -> dict:
         "offset": str(offset),
         "limit": str(limit),
     }
-    
+
     result = safe_get("SymbolEnum", params)
-    
+
     # Parse JSON response if it's a string
     if isinstance(result, str):
         try:
             return json.loads(result)
         except:
             return {"error": "Failed to parse response", "raw": result}
-    
+
     return result
 
 @mcp.tool()
 def GetThreadList() -> dict:
     """
     Get list of all threads in the debugged process with detailed information.
-    
+
     Returns:
         Dictionary with:
         - count: Number of threads
@@ -720,10 +723,10 @@ def GetTebAddress(tid: str) -> dict:
     """
     Get the Thread Environment Block (TEB) address for a specific thread.
     Use GetThreadList first to discover thread IDs.
-    
+
     Args:
         tid: Thread ID (decimal integer string, e.g. "1234")
-    
+
     Returns:
         Dictionary with tid and tebAddress fields
     """
@@ -741,17 +744,17 @@ def GetTebAddress(tid: str) -> dict:
 def MemoryBase(addr: str) -> dict:
     """
     Find the base address and size of a module containing the given address
-    
+
     Parameters:
         addr: Memory address (in hex format, e.g. "0x7FF12345")
-    
+
     Returns:
         Dictionary containing base_address and size of the module
     """
     try:
         # Make the request to the endpoint
         result = safe_get("MemoryBase", {"addr": addr})
-        
+
         # Handle different response types
         if isinstance(result, dict):
             return result
@@ -768,12 +771,12 @@ def MemoryBase(addr: str) -> dict:
                         "size": parts[1]
                     }
                 return {"raw_response": result}
-        
+
         return {"error": "Unexpected response format"}
-            
+
     except Exception as e:
         return {"error": str(e)}
-        
+
 @mcp.tool()
 def SetPageRights(addr: str, rights: str) -> bool:
     """
@@ -812,10 +815,10 @@ def StringGetAt(addr: str) -> dict:
     """
     Retrieve the string at a given address in the debugged process.
     Uses x64dbg's internal string detection (same as the disassembly view).
-    
+
     Parameters:
         addr: Memory address (in hex format, e.g. "0x1400010a0")
-    
+
     Returns:
         Dictionary with:
         - address: The queried address
@@ -839,13 +842,13 @@ def XrefGet(addr: str) -> dict:
     Get all cross-references (xrefs) TO the specified address.
     Returns the list of addresses that reference the target address,
     along with the type of each reference (data, jmp, call).
-    
+
     Note: Results depend on x64dbg's analysis database. Run analysis
     first for comprehensive results.
-    
+
     Parameters:
         addr: Target address to find references to (hex format, e.g. "0x1400010a0")
-    
+
     Returns:
         Dictionary with:
         - address: The queried target address
@@ -870,10 +873,10 @@ def XrefCount(addr: str) -> dict:
     """
     Get the count of cross-references to the specified address.
     This is a lightweight check that doesn't fetch the full reference list.
-    
+
     Parameters:
         addr: Target address to count references for (hex format, e.g. "0x1400010a0")
-    
+
     Returns:
         Dictionary with:
         - address: The queried address
@@ -895,7 +898,7 @@ def GetMemoryMap() -> dict:
     """
     Get the full virtual memory map of the debugged process.
     Returns all memory pages with their base address, size, protection, type, and info.
-    
+
     Returns:
         Dictionary with:
         - count: Number of memory pages
@@ -918,11 +921,11 @@ def MemoryRemoteAlloc(size: str, addr: str = "0") -> dict:
     """
     Allocate memory in the debuggee's address space.
     Useful for code injection, shellcode testing, or creating data buffers.
-    
+
     Parameters:
         size: Size in bytes to allocate (hex format, e.g. "0x1000")
         addr: Preferred base address (hex format, default "0" for any address)
-    
+
     Returns:
         Dictionary with:
         - address: The allocated memory address
@@ -942,10 +945,10 @@ def MemoryRemoteAlloc(size: str, addr: str = "0") -> dict:
 def MemoryRemoteFree(addr: str) -> dict:
     """
     Free memory previously allocated in the debuggee's address space via MemoryRemoteAlloc.
-    
+
     Parameters:
         addr: Address of the memory to free (hex format, e.g. "0x1000")
-    
+
     Returns:
         Dictionary with success status
     """
@@ -965,10 +968,10 @@ def GetBranchDestination(addr: str) -> dict:
     """
     Get the destination address of a branch instruction (jmp, call, jcc, etc.).
     Resolves where the branch at the given address would jump/call to.
-    
+
     Parameters:
         addr: Address of the branch instruction (hex format, e.g. "0x1400010a0")
-    
+
     Returns:
         Dictionary with:
         - address: The queried instruction address
@@ -991,7 +994,7 @@ def GetCallStack() -> dict:
     """
     Get the current call stack of the debugged thread.
     Returns the full stack trace with addresses, return addresses, and comments.
-    
+
     Returns:
         Dictionary with:
         - total: Number of stack frames
@@ -1016,10 +1019,10 @@ def GetCallStack() -> dict:
 def GetBreakpointList(type: str = "all") -> dict:
     """
     Get list of all breakpoints currently set in the debugger.
-    
+
     Parameters:
         type: Breakpoint type filter - "all" (default), "normal", "hardware", "memory", "dll", "exception"
-    
+
     Returns:
         Dictionary with:
         - count: Number of breakpoints
@@ -1042,11 +1045,11 @@ def LabelSet(addr: str, text: str) -> dict:
     """
     Set a label at the specified address in x64dbg.
     Labels appear in the disassembly view and are useful for marking important addresses.
-    
+
     Parameters:
         addr: Address to set the label at (hex format, e.g. "0x1400010a0")
         text: Label text (e.g. "main_decrypt_loop")
-    
+
     Returns:
         Dictionary with success status, address, and label text
     """
@@ -1064,10 +1067,10 @@ def LabelSet(addr: str, text: str) -> dict:
 def LabelGet(addr: str) -> dict:
     """
     Get the label at the specified address.
-    
+
     Parameters:
         addr: Address to query (hex format, e.g. "0x1400010a0")
-    
+
     Returns:
         Dictionary with:
         - address: The queried address
@@ -1088,7 +1091,7 @@ def LabelGet(addr: str) -> dict:
 def LabelList() -> dict:
     """
     Get all labels defined in the current debugging session.
-    
+
     Returns:
         Dictionary with:
         - count: Number of labels
@@ -1110,11 +1113,11 @@ def CommentSet(addr: str, text: str) -> dict:
     """
     Set a comment at the specified address in x64dbg.
     Comments appear in the disassembly view next to the instruction.
-    
+
     Parameters:
         addr: Address to set the comment at (hex format, e.g. "0x1400010a0")
         text: Comment text
-    
+
     Returns:
         Dictionary with success status and address
     """
@@ -1132,10 +1135,10 @@ def CommentSet(addr: str, text: str) -> dict:
 def CommentGet(addr: str) -> dict:
     """
     Get the comment at the specified address.
-    
+
     Parameters:
         addr: Address to query (hex format, e.g. "0x1400010a0")
-    
+
     Returns:
         Dictionary with:
         - address: The queried address
@@ -1159,9 +1162,9 @@ def GetRegisterDump() -> dict:
     Get a complete dump of all CPU registers in one call.
     Returns general purpose registers, segment registers, debug registers,
     flags, and last error/status information.
-    
+
     Much more efficient than reading registers individually.
-    
+
     Returns:
         Dictionary with all register values (cax/ccx/cdx/cbx/csp/cbp/csi/cdi,
         r8-r15 on x64, cip, eflags, segment regs, debug regs, flags object,
@@ -1183,11 +1186,11 @@ def SetHardwareBreakpoint(addr: str, type: str = "execute") -> dict:
     """
     Set a hardware breakpoint at the specified address.
     Hardware breakpoints use CPU debug registers (limited to 4 simultaneous).
-    
+
     Parameters:
         addr: Address to set the breakpoint at (hex format, e.g. "0x1400010a0")
         type: Breakpoint type - "execute" (default), "access" (read/write), or "write" (write only)
-    
+
     Returns:
         Dictionary with success status and address
     """
@@ -1205,10 +1208,10 @@ def SetHardwareBreakpoint(addr: str, type: str = "execute") -> dict:
 def DeleteHardwareBreakpoint(addr: str) -> dict:
     """
     Delete a hardware breakpoint at the specified address.
-    
+
     Parameters:
         addr: Address of the hardware breakpoint to delete (hex format)
-    
+
     Returns:
         Dictionary with success status and address
     """
@@ -1228,7 +1231,7 @@ def EnumTcpConnections() -> dict:
     """
     Enumerate all TCP connections of the debugged process.
     Useful for analyzing network activity, identifying C2 connections, etc.
-    
+
     Returns:
         Dictionary with:
         - count: Number of connections
@@ -1251,7 +1254,7 @@ def GetPatchList() -> dict:
     """
     Enumerate all memory patches applied in the current debugging session.
     Shows original and patched byte values for each patched address.
-    
+
     Returns:
         Dictionary with:
         - count: Number of patches
@@ -1271,10 +1274,10 @@ def GetPatchList() -> dict:
 def GetPatchAt(addr: str) -> dict:
     """
     Check if a specific address has been patched and get patch details.
-    
+
     Parameters:
         addr: Address to check (hex format, e.g. "0x1400010a0")
-    
+
     Returns:
         Dictionary with:
         - address: The queried address
@@ -1300,7 +1303,7 @@ def EnumHandles() -> dict:
     Enumerate all open handles in the debugged process.
     Returns handle values, types, access rights, names, and type names.
     Useful for analyzing file handles, registry keys, mutexes, events, etc.
-    
+
     Returns:
         Dictionary with:
         - count: Number of handles

@@ -79,7 +79,7 @@ bool pluginInit(PLUG_INITSTRUCT* initStruct) {
     initStruct->sdkVersion = PLUG_SDKVERSION;
     strncpy_s(initStruct->pluginName, PLUGIN_NAME, _TRUNCATE);
     g_pluginHandle = initStruct->pluginHandle;
-    
+
     _plugin_logputs("x64dbg HTTP Server plugin loading...");
     registerCommands();
     if (startHttpServer()) {
@@ -87,7 +87,7 @@ bool pluginInit(PLUG_INITSTRUCT* initStruct) {
     } else {
         _plugin_logputs("Failed to start HTTP server!");
     }
-    
+
     _plugin_logputs("x64dbg HTTP Server plugin loaded!");
     return true;
 }
@@ -124,7 +124,7 @@ bool startHttpServer() {
         _plugin_logputs("Failed to create HTTP server thread");
         return false;
     }
-    
+
     g_httpServerRunning = true;
     return true;
 }
@@ -233,7 +233,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
         WSACleanup();
         return 1;
     }
-    
+
     _plugin_logprintf("HTTP server started at http://localhost:%d/\n", g_httpPort);
     u_long mode = 1;
     ioctlsocket(g_serverSocket, FIONBIO, &mode);
@@ -241,7 +241,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
         sockaddr_in clientAddr;
         int clientAddrSize = sizeof(clientAddr);
         SOCKET clientSocket = accept(g_serverSocket, (sockaddr*)&clientAddr, &clientAddrSize);
-        
+
         if (clientSocket == INVALID_SOCKET) {
             if (!g_httpServerRunning) {
                 break;
@@ -265,7 +265,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     } else {
                         cmd = urlDecode(cmd);
                     }
-                    
+
                     if (cmd.empty()) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing command parameter");
                         continue;
@@ -411,7 +411,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Unknown register");
                         continue;
                     }
-                    
+
                     duint value = Script::Register::Get(reg);
                     std::stringstream ss;
                     ss << "0x" << std::hex << value;
@@ -463,7 +463,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Unknown register");
                         continue;
                     }
-                    
+
                     duint value = 0;
                     try {
                         if (valueStr.substr(0, 2) == "0x") {
@@ -475,20 +475,20 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid value format");
                         continue;
                     }
-                    
+
                     bool success = Script::Register::Set(reg, value);
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
+                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain",
                         success ? "Register set successfully" : "Failed to set register");
                 }
                 else if (path == "/Memory/Read") {
                     std::string addrStr = queryParams["addr"];
                     std::string sizeStr = queryParams["size"];
-                    
+
                     if (addrStr.empty() || sizeStr.empty()) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing address or size");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     duint size = 0;
                     try {
@@ -502,36 +502,36 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address or size format");
                         continue;
                     }
-                    
+
                     if (size > 1024 * 1024) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Size too large");
                         continue;
                     }
-                    
+
                     std::vector<unsigned char> buffer(size);
                     duint sizeRead = 0;
-                    
+
                     if (!Script::Memory::Read(addr, buffer.data(), size, &sizeRead)) {
                         sendHttpResponse(clientSocket, 500, "text/plain", "Failed to read memory");
                         continue;
                     }
-                    
+
                     std::stringstream ss;
                     for (duint i = 0; i < sizeRead; i++) {
                         ss << std::setw(2) << std::setfill('0') << std::hex << (int)buffer[i];
                     }
-                    
+
                     sendHttpResponse(clientSocket, 200, "text/plain", ss.str());
                 }
                 else if (path == "/Memory/Write") {
                     std::string addrStr = queryParams["addr"];
                     std::string dataStr = !body.empty() ? body : queryParams["data"];
-                    
+
                     if (addrStr.empty() || dataStr.empty()) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing address or data");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         if (addrStr.substr(0, 2) == "0x") {
@@ -543,7 +543,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
                         continue;
                     }
-                    
+
                     std::vector<unsigned char> buffer;
                     for (size_t i = 0; i < dataStr.length(); i += 2) {
                         if (i + 1 >= dataStr.length()) break;
@@ -556,10 +556,10 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             continue;
                         }
                     }
-                    
+
                     duint sizeWritten = 0;
                     bool success = Script::Memory::Write(addr, buffer.data(), buffer.size(), &sizeWritten);
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
+                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain",
                         success ? "Memory written successfully" : "Failed to write memory");
                 }
                 else if (path == "/Memory/IsValidPtr") {
@@ -568,7 +568,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing address parameter");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         if (addrStr.substr(0, 2) == "0x") {
@@ -580,7 +580,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
                         continue;
                     }
-                    
+
                     bool isValid = Script::Memory::IsValidPtr(addr);
                     sendHttpResponse(clientSocket, 200, "text/plain", isValid ? "true" : "false");
                 }
@@ -590,7 +590,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing address parameter");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         if (addrStr.substr(0, 2) == "0x") {
@@ -602,13 +602,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
                         continue;
                     }
-                    
+
                     unsigned int protect = Script::Memory::GetProtect(addr);
                     std::stringstream ss;
                     ss << "0x" << std::hex << protect;
                     sendHttpResponse(clientSocket, 200, "text/plain", ss.str());
                 }
-                
+
                 else if (path == "/Debug/Run") {
                     Script::Debug::Run();
                     sendHttpResponse(clientSocket, 200, "text/plain", "Debug run executed");
@@ -639,7 +639,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing address parameter");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         if (addrStr.substr(0, 2) == "0x") {
@@ -651,9 +651,9 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
                         continue;
                     }
-                    
+
                     bool success = Script::Debug::SetBreakpoint(addr);
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
+                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain",
                         success ? "Breakpoint set successfully" : "Failed to set breakpoint");
                 }
                 else if (path == "/Debug/DeleteBreakpoint") {
@@ -662,7 +662,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing address parameter");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         if (addrStr.substr(0, 2) == "0x") {
@@ -674,24 +674,24 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
                         continue;
                     }
-                    
+
                     bool success = Script::Debug::DeleteBreakpoint(addr);
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
+                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain",
                         success ? "Breakpoint deleted successfully" : "Failed to delete breakpoint");
                 }
-                
+
                 else if (path == "/Assembler/Assemble") {
                     std::string addrStr = queryParams["addr"];
                     std::string instruction = queryParams["instruction"];
                     if (instruction.empty() && !body.empty()) {
                         instruction = body;
                     }
-                    
+
                     if (addrStr.empty() || instruction.empty()) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing address or instruction parameter");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         if (addrStr.substr(0, 2) == "0x") {
@@ -703,11 +703,11 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
                         continue;
                     }
-                    
+
                     unsigned char dest[16];
                     int size = 16;
                     bool success = Script::Assembler::Assemble(addr, dest, &size, instruction.c_str());
-                    
+
                     if (success) {
                         std::stringstream ss;
                         ss << "{\"success\":true,\"size\":" << size << ",\"bytes\":\"";
@@ -726,12 +726,12 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     if (instruction.empty() && !body.empty()) {
                         instruction = body;
                     }
-                    
+
                     if (addrStr.empty() || instruction.empty()) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing address or instruction parameter");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         if (addrStr.substr(0, 2) == "0x") {
@@ -743,9 +743,9 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address format");
                         continue;
                     }
-                    
+
                     bool success = Script::Assembler::AssembleMem(addr, instruction.c_str());
-                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain", 
+                    sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain",
                         success ? "Instruction assembled in memory successfully" : "Failed to assemble instruction in memory");
                 }
                 else if (path == "/Stack/Pop") {
@@ -760,7 +760,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing value parameter");
                         continue;
                     }
-                    
+
                     duint value = 0;
                     try {
                         if (valueStr.substr(0, 2) == "0x") {
@@ -772,7 +772,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid value format");
                         continue;
                     }
-                    
+
                     duint prevTop = Script::Stack::Push(value);
                     std::stringstream ss;
                     ss << "0x" << std::hex << prevTop;
@@ -789,7 +789,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             continue;
                         }
                     }
-                    
+
                     duint value = Script::Stack::Peek(offset);
                     std::stringstream ss;
                     ss << "0x" << std::hex << value;
@@ -798,22 +798,22 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                 else if (path == "/Disasm/GetInstructionRange") {
                     std::string addrStr = queryParams["addr"];
                     std::string countStr = queryParams["count"];
-                    
+
                     if (addrStr.empty()) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing address parameter");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     int count = 1;
-                    
+
                     try {
                         if (addrStr.substr(0, 2) == "0x") {
                             addr = std::stoull(addrStr.substr(2), nullptr, 16);
                         } else {
                             addr = std::stoull(addrStr, nullptr, 16);
                         }
-                        
+
                         if (!countStr.empty()) {
                             count = std::stoi(countStr);
                         }
@@ -821,49 +821,49 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid address or count format");
                         continue;
                     }
-                    
+
                     if (count <= 0 || count > 100) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Count must be between 1 and 100");
                         continue;
                     }
-                    
+
                     // Get multiple instructions
                     std::stringstream ss;
                     ss << "[";
-                    
+
                     duint currentAddr = addr;
                     for (int i = 0; i < count; i++) {
                         DISASM_INSTR instr;
                         DbgDisasmAt(currentAddr, &instr);
-                        
+
                         if (instr.instr_size > 0) {
                             if (i > 0) ss << ",";
-                            
+
                             ss << "{";
                             ss << "\"address\":\"0x" << std::hex << currentAddr << "\",";
                             ss << "\"instruction\":\"" << instr.instruction << "\",";
                             ss << "\"size\":" << std::dec << instr.instr_size;
                             ss << "}";
-                            
+
                             currentAddr += instr.instr_size;
                         } else {
                             break;
                         }
                     }
-                    
+
                     ss << "]";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
                 else if (path == "/Disasm/StepInWithDisasm") {
                     // Step in first
                     Script::Debug::StepIn();
-                    
+
                     // Then get current instruction
                     duint rip = Script::Register::Get(REG_IP);
-                    
+
                     DISASM_INSTR instr;
                     DbgDisasmAt(rip, &instr);
-                    
+
                     // Create JSON response
                     std::stringstream ss;
                     ss << "{";
@@ -872,7 +872,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     ss << "\"instruction\":\"" << instr.instruction << "\",";
                     ss << "\"size\":" << std::dec << instr.instr_size;
                     ss << "}";
-                    
+
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
                 else if (path == "/Flag/Get") {
@@ -926,22 +926,27 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     sendHttpResponse(clientSocket, success ? 200 : 500, "text/plain",
                         success ? "Flag set successfully" : "Failed to set flag");
                 }
-                
+
                 else if (path == "/Pattern/FindMem") {
                     std::string startStr = queryParams["start"];
                     std::string sizeStr = queryParams["size"];
-                    std::string pattern = queryParams["pattern"];
+                    std::string patternStr = queryParams["pattern"];
                     std::string Pattern = urlDecode(pattern);
-                    if (startStr.empty() || sizeStr.empty() || pattern.empty()) {
+                    if (startStr.empty() || sizeStr.empty() || patternStr.empty()) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing start, size, or pattern parameter");
                         continue;
                     }
-                    
+
                     duint start = 0, size = 0;
 
-                    Pattern.erase(std::remove_if(pattern.begin(), pattern.end(), 
-                                  [](unsigned char c) { return std::isspace(c); }), 
-                    Pattern.end());
+                    Pattern.erase(
+                        std::remove_if(
+                            Pattern.begin(),
+                            Pattern.end(),
+                            [](unsigned char c) { return std::isspace(c); }
+                        ),
+                        Pattern.end()
+                    );
 
                     try {
                         if (startStr.substr(0, 2) == "0x") {
@@ -952,13 +957,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         if (sizeStr.substr(0, 2) == "0x") {
                             size = std::stoull(sizeStr.substr(2), nullptr, 16);
                         } else {
-                            size = std::stoull(sizeStr, nullptr, 16);
+                            size = std::stoull(sizeStr, nullptr, 10);
                         }
                     } catch (const std::exception& e) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid start or size format");
                         continue;
                     }
-                    
+
                     duint result = Script::Pattern::FindMem(start, size, Pattern.c_str());
                     if (result != 0) {
                         std::stringstream ss;
@@ -1011,12 +1016,12 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                 else if (path == "/Misc/RemoteGetProcAddress") {
                     std::string module = queryParams["module"];
                     std::string api = queryParams["api"];
-                    
+
                     if (module.empty() || api.empty()) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing module or api parameter");
                         continue;
                     }
-                    
+
                     duint addr = Script::Misc::RemoteGetProcAddress(module.c_str(), api.c_str());
                     if (addr != 0) {
                         std::stringstream ss;
@@ -1056,10 +1061,10 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                 else if (path == "/GetModuleList") {
                     // Create a list to store the module information
                     ListInfo moduleList;
-                    
+
                     // Get the list of modules
                     bool success = Script::Module::GetList(&moduleList);
-                    
+
                     if (!success) {
                         sendHttpResponse(clientSocket, 500, "text/plain", "Failed to get module list");
                     }
@@ -1067,14 +1072,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         // Create a JSON array to hold the module information
                         std::stringstream jsonResponse;
                         jsonResponse << "[";
-                        
+
                         // Iterate through each module in the list
                         size_t count = moduleList.count;
                         Script::Module::ModuleInfo* modules = (Script::Module::ModuleInfo*)moduleList.data;
-                        
+
                         for (size_t i = 0; i < count; i++) {
                             if (i > 0) jsonResponse << ",";
-                            
+
                             // Add module info as JSON object
                             jsonResponse << "{";
                             jsonResponse << "\"name\":\"" << escapeJsonString(modules[i].name) << "\",";
@@ -1085,12 +1090,12 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             jsonResponse << "\"path\":\"" << escapeJsonString(modules[i].path) << "\"";
                             jsonResponse << "}";
                         }
-                        
+
                         jsonResponse << "]";
-                        
+
                         // Free the list
                         BridgeFree(moduleList.data);
-                        
+
                         // Send the response
                         sendHttpResponse(clientSocket, 200, "application/json", jsonResponse.str());
                     }
@@ -1103,76 +1108,76 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Missing required 'module' parameter. Use GetModuleList to discover module names.\"}");
                         continue;
                     }
-                    
+
                     // Parse pagination parameters
                     std::string offsetStr = queryParams["offset"];
                     std::string limitStr = queryParams["limit"];
-                    
+
                     int offset = 0;
                     int limit = 5000;
-                    
+
                     if (!offsetStr.empty()) {
                         try { offset = std::stoi(offsetStr); } catch (...) { offset = 0; }
                     }
                     if (!limitStr.empty()) {
                         try { limit = std::stoi(limitStr); } catch (...) { limit = 5000; }
                     }
-                    
+
                     // Clamp values
                     if (offset < 0) offset = 0;
                     if (limit <= 0) limit = 5000;
                     if (limit > 50000) limit = 50000;
-                    
+
                     std::string moduleFilterDecoded = urlDecode(moduleFilter);
-                    
+
                     // Get all symbols using Script::Symbol::GetList
                     ListInfo symbolList;
                     bool success = Script::Symbol::GetList(&symbolList);
-                    
+
                     if (!success || symbolList.data == nullptr) {
                         sendHttpResponse(clientSocket, 500, "application/json",
                             "{\"error\":\"Failed to enumerate symbols\",\"symbols\":[],\"total\":0}");
                         continue;
                     }
-                    
+
                     size_t totalCount = symbolList.count;
                     Script::Symbol::SymbolInfo* symbols = (Script::Symbol::SymbolInfo*)symbolList.data;
-                    
+
                     // Build JSON response - filter to requested module only
                     std::stringstream jsonResponse;
-                    
+
                     int matchIndex = 0;   // Index among matching symbols
                     int emitted = 0;      // Number of symbols emitted in this page
                     int filteredTotal = 0; // Total matching symbols for this module
-                    
+
                     // First pass: count total matching symbols for this module
                     for (size_t i = 0; i < totalCount; i++) {
                         if (_stricmp(symbols[i].mod, moduleFilterDecoded.c_str()) == 0) {
                             filteredTotal++;
                         }
                     }
-                    
+
                     // Write header
                     jsonResponse << "{\"total\":" << filteredTotal
                                  << ",\"module\":\"" << escapeJsonString(moduleFilterDecoded.c_str()) << "\""
                                  << ",\"offset\":" << offset
                                  << ",\"limit\":" << limit
                                  << ",\"symbols\":[";
-                    
+
                     // Second pass: emit symbols with pagination
                     for (size_t i = 0; i < totalCount && emitted < limit; i++) {
                         // Filter to requested module
                         if (_stricmp(symbols[i].mod, moduleFilterDecoded.c_str()) != 0) {
                             continue;
                         }
-                        
+
                         // Apply offset (skip first N matching symbols)
                         if (matchIndex < offset) {
                             matchIndex++;
                             continue;
                         }
                         matchIndex++;
-                        
+
                         // Determine type string
                         const char* typeStr = "unknown";
                         switch (symbols[i].type) {
@@ -1180,21 +1185,21 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             case Script::Symbol::Import:   typeStr = "import"; break;
                             case Script::Symbol::Export:   typeStr = "export"; break;
                         }
-                        
+
                         if (emitted > 0) jsonResponse << ",";
-                        
+
                         jsonResponse << "{"
                                      << "\"rva\":\"0x" << std::hex << symbols[i].rva << "\","
                                      << "\"name\":\"" << escapeJsonString(symbols[i].name) << "\","
                                      << "\"manual\":" << (symbols[i].manual ? "true" : "false") << ","
                                      << "\"type\":\"" << typeStr << "\""
                                      << "}";
-                        
+
                         emitted++;
                     }
-                    
+
                     jsonResponse << "]}";
-                    
+
                     // Free the list
                     BridgeFree(symbolList.data);
 
@@ -1204,23 +1209,23 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     THREADLIST threadList;
                     memset(&threadList, 0, sizeof(threadList));
                     DbgGetThreadList(&threadList);
-                    
+
                     if (threadList.count == 0 || threadList.list == nullptr) {
                         sendHttpResponse(clientSocket, 200, "application/json",
                             "{\"count\":0,\"currentThread\":-1,\"threads\":[]}");
                         continue;
                     }
-                    
+
                     std::stringstream jsonResponse;
                     jsonResponse << "{\"count\":" << threadList.count
                                  << ",\"currentThread\":" << threadList.CurrentThread
                                  << ",\"threads\":[";
-                    
+
                     for (int i = 0; i < threadList.count; i++) {
                         THREADALLINFO& t = threadList.list[i];
-                        
+
                         if (i > 0) jsonResponse << ",";
-                        
+
                         // Map priority enum to readable string
                         const char* priorityStr = "Unknown";
                         switch (t.Priority) {
@@ -1233,7 +1238,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             case _PriorityTimeCritical:  priorityStr = "TimeCritical"; break;
                             default: break;
                         }
-                        
+
                         // Map wait reason enum to readable string
                         const char* waitStr = "Unknown";
                         switch (t.WaitReason) {
@@ -1259,7 +1264,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             case _WrRendezvous:     waitStr = "WrRendezvous"; break;
                             default: break;
                         }
-                        
+
                         jsonResponse << "{"
                             << "\"threadNumber\":" << t.BasicInfo.ThreadNumber << ","
                             << "\"threadId\":" << std::dec << t.BasicInfo.ThreadId << ","
@@ -1274,12 +1279,12 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             << "\"cycles\":" << std::dec << t.Cycles
                             << "}";
                     }
-                    
+
                     jsonResponse << "]}";
-                    
+
                     // Free the thread list
                     BridgeFree(threadList.list);
-                    
+
                     sendHttpResponse(clientSocket, 200, "application/json", jsonResponse.str());
                 }
                 else if (path == "/GetTebAddress") {
@@ -1288,7 +1293,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Missing 'tid' parameter (thread ID)");
                         continue;
                     }
-                    
+
                     DWORD tid = 0;
                     try {
                         tid = (DWORD)std::stoul(tidStr, nullptr, 0);
@@ -1296,14 +1301,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         sendHttpResponse(clientSocket, 400, "text/plain", "Invalid tid format");
                         continue;
                     }
-                    
+
                     duint tebAddr = DbgGetTebAddress(tid);
                     if (tebAddr == 0) {
                         sendHttpResponse(clientSocket, 404, "application/json",
                             "{\"error\":\"TEB not found for given thread ID\"}");
                         continue;
                     }
-                    
+
                     std::stringstream ss;
                     ss << "{\"tid\":" << std::dec << tid
                        << ",\"tebAddress\":\"0x" << std::hex << tebAddr << "\"}";
@@ -1316,7 +1321,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Missing required 'addr' parameter\"}");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         addr = std::stoull(addrStr, nullptr, 16);
@@ -1325,10 +1330,10 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Invalid address format\"}");
                         continue;
                     }
-                    
+
                     char text[MAX_STRING_SIZE] = {0};
                     bool found = DbgGetStringAt(addr, text);
-                    
+
                     std::stringstream ss;
                     ss << "{\"address\":\"0x" << std::hex << addr << "\","
                        << "\"found\":" << (found ? "true" : "false") << ","
@@ -1342,7 +1347,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Missing required 'addr' parameter\"}");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         addr = std::stoull(addrStr, nullptr, 16);
@@ -1351,19 +1356,19 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Invalid address format\"}");
                         continue;
                     }
-                    
+
                     XREF_INFO xrefInfo = {0};
                     bool success = DbgXrefGet(addr, &xrefInfo);
-                    
+
                     std::stringstream ss;
                     ss << "{\"address\":\"0x" << std::hex << addr << "\","
                        << "\"refcount\":" << std::dec << (success ? xrefInfo.refcount : 0) << ","
                        << "\"references\":[";
-                    
+
                     if (success && xrefInfo.references != nullptr) {
                         for (duint i = 0; i < xrefInfo.refcount; i++) {
                             if (i > 0) ss << ",";
-                            
+
                             const char* typeStr = "none";
                             switch (xrefInfo.references[i].type) {
                                 case XREF_DATA: typeStr = "data"; break;
@@ -1371,25 +1376,25 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                                 case XREF_CALL: typeStr = "call"; break;
                                 default: typeStr = "none"; break;
                             }
-                            
+
                             // Also try to get the string at the target address for context
                             char refString[MAX_STRING_SIZE] = {0};
                             DbgGetStringAt(xrefInfo.references[i].addr, refString);
-                            
+
                             ss << "{\"addr\":\"0x" << std::hex << xrefInfo.references[i].addr << "\","
                                << "\"type\":\"" << typeStr << "\"";
-                            
+
                             if (refString[0] != '\0') {
                                 ss << ",\"string\":\"" << escapeJsonString(refString) << "\"";
                             }
-                            
+
                             ss << "}";
                         }
-                        
+
                         // Free the references array
                         BridgeFree(xrefInfo.references);
                     }
-                    
+
                     ss << "]}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
@@ -1400,7 +1405,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Missing required 'addr' parameter\"}");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         addr = std::stoull(addrStr, nullptr, 16);
@@ -1409,9 +1414,9 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Invalid address format\"}");
                         continue;
                     }
-                    
+
                     size_t count = DbgGetXrefCountAt(addr);
-                    
+
                     std::stringstream ss;
                     ss << "{\"address\":\"0x" << std::hex << addr << "\","
                        << "\"count\":" << std::dec << count << "}";
@@ -1421,20 +1426,20 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     MEMMAP memmap;
                     memset(&memmap, 0, sizeof(memmap));
                     bool success = DbgMemMap(&memmap);
-                    
+
                     if (!success || memmap.page == nullptr || memmap.count == 0) {
                         sendHttpResponse(clientSocket, 500, "application/json",
                             "{\"error\":\"Failed to get memory map\",\"pages\":[]}");
                         continue;
                     }
-                    
+
                     std::stringstream ss;
                     ss << "{\"count\":" << memmap.count << ",\"pages\":[";
-                    
+
                     for (int i = 0; i < memmap.count; i++) {
                         if (i > 0) ss << ",";
                         MEMPAGE& p = memmap.page[i];
-                        
+
                         // Decode protection to string
                         const char* protectStr = "---";
                         DWORD prot = p.mbi.Protect & 0xFF;
@@ -1446,33 +1451,33 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         else if (prot == PAGE_WRITECOPY) protectStr = "-RW";
                         else if (prot == PAGE_EXECUTE) protectStr = "E--";
                         else if (prot == PAGE_NOACCESS) protectStr = "---";
-                        
+
                         // Decode type
                         const char* typeStr = "Unknown";
                         if (p.mbi.Type == MEM_IMAGE) typeStr = "IMG";
                         else if (p.mbi.Type == MEM_MAPPED) typeStr = "MAP";
                         else if (p.mbi.Type == MEM_PRIVATE) typeStr = "PRV";
-                        
+
                         ss << "{\"base\":\"0x" << std::hex << (duint)p.mbi.BaseAddress << "\","
                            << "\"size\":\"0x" << std::hex << p.mbi.RegionSize << "\","
                            << "\"protect\":\"" << protectStr << "\","
                            << "\"type\":\"" << typeStr << "\","
                            << "\"info\":\"" << escapeJsonString(p.info) << "\"}";
                     }
-                    
+
                     ss << "]}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
                 else if (path == "/Memory/RemoteAlloc") {
                     std::string addrStr = queryParams["addr"];
                     std::string sizeStr = queryParams["size"];
-                    
+
                     if (sizeStr.empty()) {
                         sendHttpResponse(clientSocket, 400, "application/json",
                             "{\"error\":\"Missing required 'size' parameter\"}");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     duint size = 0;
                     try {
@@ -1483,9 +1488,9 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Invalid parameter format\"}");
                         continue;
                     }
-                    
+
                     duint result = Script::Memory::RemoteAlloc(addr, size);
-                    
+
                     if (result == 0) {
                         sendHttpResponse(clientSocket, 500, "application/json",
                             "{\"error\":\"RemoteAlloc failed\"}");
@@ -1503,7 +1508,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Missing required 'addr' parameter\"}");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         addr = std::stoull(addrStr, nullptr, 16);
@@ -1512,7 +1517,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Invalid address format\"}");
                         continue;
                     }
-                    
+
                     bool success = Script::Memory::RemoteFree(addr);
                     std::stringstream ss;
                     ss << "{\"success\":" << (success ? "true" : "false") << "}";
@@ -1525,7 +1530,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Missing required 'addr' parameter\"}");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         addr = std::stoull(addrStr, nullptr, 16);
@@ -1534,9 +1539,9 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Invalid address format\"}");
                         continue;
                     }
-                    
+
                     duint dest = DbgGetBranchDestination(addr);
-                    
+
                     std::stringstream ss;
                     ss << "{\"address\":\"0x" << std::hex << addr << "\","
                        << "\"destination\":\"0x" << std::hex << dest << "\","
@@ -1550,14 +1555,14 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"GetCallStackEx not available\"}");
                         continue;
                     }
-                    
+
                     DBGCALLSTACK callstack;
                     memset(&callstack, 0, sizeof(callstack));
                     dbgFunc->GetCallStackEx(&callstack, true);
-                    
+
                     std::stringstream ss;
                     ss << "{\"total\":" << callstack.total << ",\"entries\":[";
-                    
+
                     if (callstack.entries != nullptr) {
                         for (int i = 0; i < callstack.total; i++) {
                             if (i > 0) ss << ",";
@@ -1569,13 +1574,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                         }
                         BridgeFree(callstack.entries);
                     }
-                    
+
                     ss << "]}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
                 else if (path == "/Breakpoint/List") {
                     std::string typeStr = queryParams["type"];
-                    
+
                     // Default to listing all breakpoint types
                     BPXTYPE bpType = bp_normal;
                     if (typeStr == "hardware") bpType = bp_hardware;
@@ -1583,30 +1588,30 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     else if (typeStr == "dll") bpType = bp_dll;
                     else if (typeStr == "exception") bpType = bp_exception;
                     else if (typeStr == "normal" || typeStr.empty()) bpType = bp_normal;
-                    
+
                     // If type is "all", we gather all types
                     bool getAllTypes = (typeStr == "all" || typeStr.empty());
-                    
+
                     std::stringstream ss;
                     ss << "{\"breakpoints\":[";
-                    
+
                     int totalEmitted = 0;
-                    
+
                     // Types to iterate
                     BPXTYPE types[] = { bp_normal, bp_hardware, bp_memory, bp_dll, bp_exception };
                     int numTypes = getAllTypes ? 5 : 1;
                     BPXTYPE* typeList = getAllTypes ? types : &bpType;
-                    
+
                     for (int t = 0; t < numTypes; t++) {
                         BPMAP bpmap;
                         memset(&bpmap, 0, sizeof(bpmap));
                         int count = DbgGetBpList(typeList[t], &bpmap);
-                        
+
                         if (count > 0 && bpmap.bp != nullptr) {
                             for (int i = 0; i < bpmap.count; i++) {
                                 if (totalEmitted > 0) ss << ",";
                                 BRIDGEBP& bp = bpmap.bp[i];
-                                
+
                                 const char* bpTypeStr = "unknown";
                                 switch (bp.type) {
                                     case bp_normal:    bpTypeStr = "normal"; break;
@@ -1616,7 +1621,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                                     case bp_exception: bpTypeStr = "exception"; break;
                                     default: break;
                                 }
-                                
+
                                 ss << "{\"type\":\"" << bpTypeStr << "\","
                                    << "\"addr\":\"0x" << std::hex << bp.addr << "\","
                                    << "\"enabled\":" << (bp.enabled ? "true" : "false") << ","
@@ -1636,7 +1641,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             BridgeFree(bpmap.bp);
                         }
                     }
-                    
+
                     ss << "],\"count\":" << std::dec << totalEmitted << "}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
@@ -1645,13 +1650,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     std::string text = queryParams["text"];
                     if (!body.empty() && text.empty()) text = body;
                     text = urlDecode(text);
-                    
+
                     if (addrStr.empty() || text.empty()) {
                         sendHttpResponse(clientSocket, 400, "application/json",
                             "{\"error\":\"Missing required 'addr' and 'text' parameters\"}");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         addr = std::stoull(addrStr, nullptr, 16);
@@ -1660,7 +1665,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Invalid address format\"}");
                         continue;
                     }
-                    
+
                     bool success = DbgSetLabelAt(addr, text.c_str());
                     std::stringstream ss;
                     ss << "{\"success\":" << (success ? "true" : "false") << ","
@@ -1675,7 +1680,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Missing required 'addr' parameter\"}");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         addr = std::stoull(addrStr, nullptr, 16);
@@ -1684,10 +1689,10 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Invalid address format\"}");
                         continue;
                     }
-                    
+
                     char text[MAX_LABEL_SIZE] = {0};
                     bool found = DbgGetLabelAt(addr, SEG_DEFAULT, text);
-                    
+
                     std::stringstream ss;
                     ss << "{\"address\":\"0x" << std::hex << addr << "\","
                        << "\"found\":" << (found ? "true" : "false") << ","
@@ -1697,19 +1702,19 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                 else if (path == "/Label/List") {
                     ListInfo labelList;
                     bool success = Script::Label::GetList(&labelList);
-                    
+
                     if (!success || labelList.data == nullptr) {
                         sendHttpResponse(clientSocket, 200, "application/json",
                             "{\"count\":0,\"labels\":[]}");
                         continue;
                     }
-                    
+
                     Script::Label::LabelInfo* labels = (Script::Label::LabelInfo*)labelList.data;
                     size_t count = labelList.count;
-                    
+
                     std::stringstream ss;
                     ss << "{\"count\":" << std::dec << count << ",\"labels\":[";
-                    
+
                     for (size_t i = 0; i < count; i++) {
                         if (i > 0) ss << ",";
                         ss << "{\"module\":\"" << escapeJsonString(labels[i].mod) << "\","
@@ -1717,7 +1722,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                            << "\"text\":\"" << escapeJsonString(labels[i].text) << "\","
                            << "\"manual\":" << (labels[i].manual ? "true" : "false") << "}";
                     }
-                    
+
                     ss << "]}";
                     BridgeFree(labelList.data);
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
@@ -1727,13 +1732,13 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     std::string text = queryParams["text"];
                     if (!body.empty() && text.empty()) text = body;
                     text = urlDecode(text);
-                    
+
                     if (addrStr.empty() || text.empty()) {
                         sendHttpResponse(clientSocket, 400, "application/json",
                             "{\"error\":\"Missing required 'addr' and 'text' parameters\"}");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         addr = std::stoull(addrStr, nullptr, 16);
@@ -1742,7 +1747,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Invalid address format\"}");
                         continue;
                     }
-                    
+
                     bool success = DbgSetCommentAt(addr, text.c_str());
                     std::stringstream ss;
                     ss << "{\"success\":" << (success ? "true" : "false") << ","
@@ -1756,7 +1761,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Missing required 'addr' parameter\"}");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         addr = std::stoull(addrStr, nullptr, 16);
@@ -1765,10 +1770,10 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Invalid address format\"}");
                         continue;
                     }
-                    
+
                     char text[MAX_COMMENT_SIZE] = {0};
                     bool found = DbgGetCommentAt(addr, text);
-                    
+
                     std::stringstream ss;
                     ss << "{\"address\":\"0x" << std::hex << addr << "\","
                        << "\"found\":" << (found ? "true" : "false") << ","
@@ -1779,20 +1784,20 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                     REGDUMP_AVX512 regdump;
                     memset(&regdump, 0, sizeof(regdump));
                     bool success = DbgGetRegDumpEx(&regdump, sizeof(regdump));
-                    
+
                     if (!success) {
                         sendHttpResponse(clientSocket, 500, "application/json",
                             "{\"error\":\"Failed to get register dump\"}");
                         continue;
                     }
-                    
+
                     std::stringstream ss;
                     const ULONG_PTR rflags = regdump.regcontext.eflags;
                     const auto rflag = [rflags](unsigned bit) {
                         return ((rflags >> bit) & 1) != 0;
                     };
                     ss << "{";
-                    
+
                     // General purpose registers
                     ss << "\"cax\":\"0x" << std::hex << regdump.regcontext.cax << "\","
                        << "\"ccx\":\"0x" << std::hex << regdump.regcontext.ccx << "\","
@@ -1814,7 +1819,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
 #endif
                        << "\"cip\":\"0x" << std::hex << regdump.regcontext.cip << "\","
                        << "\"eflags\":\"0x" << std::hex << regdump.regcontext.eflags << "\","
-                    
+
                     // Segment registers
                        << "\"gs\":\"0x" << std::hex << regdump.regcontext.gs << "\","
                        << "\"fs\":\"0x" << std::hex << regdump.regcontext.fs << "\","
@@ -1822,7 +1827,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                        << "\"ds\":\"0x" << std::hex << regdump.regcontext.ds << "\","
                        << "\"cs\":\"0x" << std::hex << regdump.regcontext.cs << "\","
                        << "\"ss\":\"0x" << std::hex << regdump.regcontext.ss << "\","
-                    
+
                     // Debug registers
                        << "\"dr0\":\"0x" << std::hex << regdump.regcontext.dr0 << "\","
                        << "\"dr1\":\"0x" << std::hex << regdump.regcontext.dr1 << "\","
@@ -1830,7 +1835,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                        << "\"dr3\":\"0x" << std::hex << regdump.regcontext.dr3 << "\","
                        << "\"dr6\":\"0x" << std::hex << regdump.regcontext.dr6 << "\","
                        << "\"dr7\":\"0x" << std::hex << regdump.regcontext.dr7 << "\","
-                    
+
                     // RFLAGS condition codes (REGDUMP_AVX512 has no separate FLAGS; decode from eflags)
                        << "\"flags\":{"
                        << "\"ZF\":" << (rflag(6) ? "true" : "false") << ","
@@ -1843,24 +1848,24 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                        << "\"DF\":" << (rflag(10) ? "true" : "false") << ","
                        << "\"IF\":" << (rflag(9) ? "true" : "false")
                        << "},"
-                    
+
                     // Last error/status (codes only in REGDUMP_AVX512)
                        << "\"lastError\":{\"code\":" << std::dec << regdump.lastError << ",\"name\":\"\"},"
                        << "\"lastStatus\":{\"code\":" << std::dec << regdump.lastStatus << ",\"name\":\"\"}"
                        << "}";
-                    
+
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
                 else if (path == "/Debug/SetHardwareBreakpoint") {
                     std::string addrStr = queryParams["addr"];
                     std::string typeStr = queryParams["type"]; // access, write, execute
-                    
+
                     if (addrStr.empty()) {
                         sendHttpResponse(clientSocket, 400, "application/json",
                             "{\"error\":\"Missing required 'addr' parameter\"}");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         addr = std::stoull(addrStr, nullptr, 16);
@@ -1869,12 +1874,12 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Invalid address format\"}");
                         continue;
                     }
-                    
+
                     Script::Debug::HardwareType hwType = Script::Debug::HardwareExecute;
                     if (typeStr == "access") hwType = Script::Debug::HardwareAccess;
                     else if (typeStr == "write") hwType = Script::Debug::HardwareWrite;
                     else if (typeStr == "execute") hwType = Script::Debug::HardwareExecute;
-                    
+
                     bool success = Script::Debug::SetHardwareBreakpoint(addr, hwType);
                     std::stringstream ss;
                     ss << "{\"success\":" << (success ? "true" : "false") << ","
@@ -1888,7 +1893,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Missing required 'addr' parameter\"}");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         addr = std::stoull(addrStr, nullptr, 16);
@@ -1897,7 +1902,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Invalid address format\"}");
                         continue;
                     }
-                    
+
                     bool success = Script::Debug::DeleteHardwareBreakpoint(addr);
                     std::stringstream ss;
                     ss << "{\"success\":" << (success ? "true" : "false") << ","
@@ -1911,22 +1916,22 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"EnumTcpConnections not available\"}");
                         continue;
                     }
-                    
+
                     ListInfo tcpList;
                     bool success = dbgFunc->EnumTcpConnections(&tcpList);
-                    
+
                     if (!success || tcpList.data == nullptr) {
                         sendHttpResponse(clientSocket, 200, "application/json",
                             "{\"count\":0,\"connections\":[]}");
                         continue;
                     }
-                    
+
                     TCPCONNECTIONINFO* connections = (TCPCONNECTIONINFO*)tcpList.data;
                     size_t count = tcpList.count;
-                    
+
                     std::stringstream ss;
                     ss << "{\"count\":" << std::dec << count << ",\"connections\":[";
-                    
+
                     for (size_t i = 0; i < count; i++) {
                         if (i > 0) ss << ",";
                         ss << "{\"remoteAddress\":\"" << escapeJsonString(connections[i].RemoteAddress) << "\","
@@ -1935,7 +1940,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                            << "\"localPort\":" << std::dec << connections[i].LocalPort << ","
                            << "\"state\":\"" << escapeJsonString(connections[i].StateText) << "\"}";
                     }
-                    
+
                     ss << "]}";
                     BridgeFree(tcpList.data);
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
@@ -1947,29 +1952,29 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"PatchEnum not available\"}");
                         continue;
                     }
-                    
+
                     // First call to get size needed
                     size_t cbsize = 0;
                     dbgFunc->PatchEnum(nullptr, &cbsize);
-                    
+
                     if (cbsize == 0) {
                         sendHttpResponse(clientSocket, 200, "application/json",
                             "{\"count\":0,\"patches\":[]}");
                         continue;
                     }
-                    
+
                     size_t count = cbsize / sizeof(DBGPATCHINFO);
                     std::vector<DBGPATCHINFO> patches(count);
-                    
+
                     if (!dbgFunc->PatchEnum(patches.data(), &cbsize)) {
                         sendHttpResponse(clientSocket, 500, "application/json",
                             "{\"error\":\"PatchEnum failed\"}");
                         continue;
                     }
-                    
+
                     std::stringstream ss;
                     ss << "{\"count\":" << std::dec << count << ",\"patches\":[";
-                    
+
                     for (size_t i = 0; i < count; i++) {
                         if (i > 0) ss << ",";
                         ss << "{\"module\":\"" << escapeJsonString(patches[i].mod) << "\","
@@ -1977,7 +1982,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                            << "\"oldByte\":\"0x" << std::hex << (int)patches[i].oldbyte << "\","
                            << "\"newByte\":\"0x" << std::hex << (int)patches[i].newbyte << "\"}";
                     }
-                    
+
                     ss << "]}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
@@ -1988,7 +1993,7 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Missing required 'addr' parameter\"}");
                         continue;
                     }
-                    
+
                     duint addr = 0;
                     try {
                         addr = std::stoull(addrStr, nullptr, 16);
@@ -1997,34 +2002,34 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"Invalid address format\"}");
                         continue;
                     }
-                    
+
                     const DBGFUNCTIONS* dbgFunc = DbgFunctions();
                     if (!dbgFunc) {
                         sendHttpResponse(clientSocket, 500, "application/json",
                             "{\"error\":\"DbgFunctions not available\"}");
                         continue;
                     }
-                    
+
                     DBGPATCHINFO patchInfo;
                     memset(&patchInfo, 0, sizeof(patchInfo));
                     bool found = false;
-                    
+
                     if (dbgFunc->PatchGetEx) {
                         found = dbgFunc->PatchGetEx(addr, &patchInfo);
                     } else if (dbgFunc->PatchGet) {
                         found = dbgFunc->PatchGet(addr);
                     }
-                    
+
                     std::stringstream ss;
                     ss << "{\"address\":\"0x" << std::hex << addr << "\","
                        << "\"patched\":" << (found ? "true" : "false");
-                    
+
                     if (found && dbgFunc->PatchGetEx) {
                         ss << ",\"module\":\"" << escapeJsonString(patchInfo.mod) << "\","
                            << "\"oldByte\":\"0x" << std::hex << (int)patchInfo.oldbyte << "\","
                            << "\"newByte\":\"0x" << std::hex << (int)patchInfo.newbyte << "\"";
                     }
-                    
+
                     ss << "}";
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
@@ -2035,44 +2040,44 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
                             "{\"error\":\"EnumHandles not available\"}");
                         continue;
                     }
-                    
+
                     ListInfo handleList;
                     bool success = dbgFunc->EnumHandles(&handleList);
-                    
+
                     if (!success || handleList.data == nullptr) {
                         sendHttpResponse(clientSocket, 200, "application/json",
                             "{\"count\":0,\"handles\":[]}");
                         continue;
                     }
-                    
+
                     HANDLEINFO* handles = (HANDLEINFO*)handleList.data;
                     size_t count = handleList.count;
-                    
+
                     std::stringstream ss;
                     ss << "{\"count\":" << std::dec << count << ",\"handles\":[";
-                    
+
                     for (size_t i = 0; i < count; i++) {
                         if (i > 0) ss << ",";
-                        
+
                         // Try to get the handle name and type
                         char handleName[256] = {0};
                         char typeName[256] = {0};
                         if (dbgFunc->GetHandleName) {
                             dbgFunc->GetHandleName(handles[i].Handle, handleName, sizeof(handleName), typeName, sizeof(typeName));
                         }
-                        
+
                         ss << "{\"handle\":\"0x" << std::hex << handles[i].Handle << "\","
                            << "\"typeNumber\":" << std::dec << (int)handles[i].TypeNumber << ","
                            << "\"grantedAccess\":\"0x" << std::hex << handles[i].GrantedAccess << "\","
                            << "\"name\":\"" << escapeJsonString(handleName) << "\","
                            << "\"typeName\":\"" << escapeJsonString(typeName) << "\"}";
                     }
-                    
+
                     ss << "]}";
                     BridgeFree(handleList.data);
                     sendHttpResponse(clientSocket, 200, "application/json", ss.str());
                 }
-                
+
             }
             catch (const std::exception& e) {
                 sendHttpResponse(clientSocket, 500, "text/plain", std::string("Internal Server Error: ") + e.what());
@@ -2096,12 +2101,12 @@ std::string readHttpRequest(SOCKET clientSocket) {
     u_long mode = 0;
     ioctlsocket(clientSocket, FIONBIO, &mode);
     bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
-    
+
     if (bytesReceived > 0) {
         buffer[bytesReceived] = '\0';
         request = buffer;
     }
-    
+
     return request;
 }
 
@@ -2110,20 +2115,20 @@ void parseHttpRequest(const std::string& request, std::string& method, std::stri
     if (firstLineEnd == std::string::npos) {
         return;
     }
-    
+
     std::string requestLine = request.substr(0, firstLineEnd);
     size_t methodEnd = requestLine.find(' ');
     if (methodEnd == std::string::npos) {
         return;
     }
-    
+
     method = requestLine.substr(0, methodEnd);
-    
+
     size_t urlEnd = requestLine.find(' ', methodEnd + 1);
     if (urlEnd == std::string::npos) {
         return;
     }
-    
+
     std::string url = requestLine.substr(methodEnd + 1, urlEnd - methodEnd - 1);
     size_t queryStart = url.find('?');
     if (queryStart != std::string::npos) {
@@ -2161,28 +2166,28 @@ void sendHttpResponse(SOCKET clientSocket, int statusCode, const std::string& co
 
 std::unordered_map<std::string, std::string> parseQueryParams(const std::string& query) {
     std::unordered_map<std::string, std::string> params;
-    
+
     size_t pos = 0;
     size_t nextPos;
-    
+
     while (pos < query.length()) {
         nextPos = query.find('&', pos);
         if (nextPos == std::string::npos) {
             nextPos = query.length();
         }
-        
+
         std::string pair = query.substr(pos, nextPos - pos);
         size_t equalPos = pair.find('=');
-        
+
         if (equalPos != std::string::npos) {
             std::string key = pair.substr(0, equalPos);
             std::string value = pair.substr(equalPos + 1);
             params[key] = value;
         }
-        
+
         pos = nextPos + 1;
     }
-    
+
     return params;
 }
 
@@ -2207,7 +2212,7 @@ bool cbSetHttpPort(int argc, char* argv[]) {
         _plugin_logputs("Usage: httpport [port_number]");
         return false;
     }
-    
+
     int port;
     try {
         port = std::stoi(argv[1]);
@@ -2216,14 +2221,14 @@ bool cbSetHttpPort(int argc, char* argv[]) {
         _plugin_logputs("Invalid port number");
         return false;
     }
-    
+
     if (port <= 0 || port > 65535) {
         _plugin_logputs("Port number must be between 1 and 65535");
         return false;
     }
-    
+
     g_httpPort = port;
-    
+
     if (g_httpServerRunning) {
         _plugin_logputs("Restarting HTTP server with new port...");
         stopHttpServer();
@@ -2235,13 +2240,13 @@ bool cbSetHttpPort(int argc, char* argv[]) {
     } else {
         _plugin_logprintf("HTTP port set to %d\n", g_httpPort);
     }
-    
+
     return true;
 }
 
 void registerCommands() {
-    _plugin_registercommand(g_pluginHandle, "httpserver", cbEnableHttpServer, 
+    _plugin_registercommand(g_pluginHandle, "httpserver", cbEnableHttpServer,
                            "Toggle HTTP server on/off");
-    _plugin_registercommand(g_pluginHandle, "httpport", cbSetHttpPort, 
+    _plugin_registercommand(g_pluginHandle, "httpport", cbSetHttpPort,
                            "Set HTTP server port");
 }
