@@ -1,0 +1,20 @@
+# Build output
+/build64/
+/build32/
+build/
+*.dp64
+*.dp32
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# Downloaded x64dbg plugin SDK (fetched by CMake X64DBG_DOWNLOAD_SDK=ON)
+/deps/
+
+# IDE / editor
+.vs/
+.vscode/
+*.user
+CMakeSettings.json

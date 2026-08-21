@@ -28,6 +28,7 @@
 #include <unordered_map>
 #include <sstream>
 #include <mutex>
+#include <thread>
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -58,6 +59,7 @@ HANDLE g_httpServerThread = NULL;
 bool g_httpServerRunning = false;
 int g_httpPort = DEFAULT_PORT;
 std::mutex g_httpMutex;
+std::mutex g_execMutex;   // serializes /ExecCommand (DbgCmdExecDirect + GuiReference*) across per-connection threads
 SOCKET g_serverSocket = INVALID_SOCKET;
 
 bool startHttpServer();
@@ -252,13 +254,23 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
             Sleep(100);
             continue;
         }
+        // Handle each connection on its own detached thread so a handler that
+        // blocks while the debuggee is running (e.g. DbgCmdExecDirect on a free-
+        // running target) can never freeze the accept loop / whole server.
+        std::thread([clientSocket]() {
         std::string requestData = readHttpRequest(clientSocket);
         if (!requestData.empty()) {
             std::string method, path, query, body;
             parseHttpRequest(requestData, method, path, query, body);
             std::unordered_map<std::string, std::string> queryParams = parseQueryParams(query);
+            // for(_once) wrapper: a bare (request-level) 'continue' inside the
+            // dispatch below binds to THIS loop -> aborts the request cleanly
+            // (falls through to closesocket). Inner for/while 'continue's are
+            // unaffected (they bind to their own loop). No 'continue' rewrites.
+            for (int _once = 0; _once < 1; ++_once) {
             try {
                 if (path == "/ExecCommand") {
+                    std::lock_guard<std::mutex> _execlk(g_execMutex);
                     std::string cmd = queryParams["cmd"];
                     if (cmd.empty() && !body.empty()) {
                         cmd = body;
@@ -2077,8 +2089,10 @@ DWORD WINAPI HttpServerThread(LPVOID lpParam) {
             catch (const std::exception& e) {
                 sendHttpResponse(clientSocket, 500, "text/plain", std::string("Internal Server Error: ") + e.what());
             }
+            } // end for(_once) request-abort wrapper
         }
         closesocket(clientSocket);
+        }).detach(); // end per-connection worker thread
     }
     if (g_serverSocket != INVALID_SOCKET) {
         closesocket(g_serverSocket);
